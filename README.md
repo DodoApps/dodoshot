@@ -81,6 +81,25 @@ DodoShot is a lightweight, native macOS screenshot application built with SwiftU
 - Screen Recording permission
 - Accessibility permission (for global hotkeys)
 
+### Homebrew (Recommended)
+```bash
+brew tap bluewave-labs/tap
+brew install --cask dodoshot
+```
+
+The Homebrew installation automatically handles the quarantine flag removal.
+
+### Download DMG
+1. Download the latest DMG from [Releases](https://github.com/bluewave-labs/DodoShot/releases)
+2. Open the DMG and drag DodoShot to Applications
+3. **Important:** Run this command in Terminal to remove the quarantine flag:
+   ```bash
+   xattr -cr /Applications/DodoShot.app
+   ```
+4. Launch DodoShot from Applications
+
+> **Note:** The `xattr` command is required because the app is not signed with an Apple Developer certificate. This is safe for open-source software where you can verify the source code.
+
 ### Build from source
 1. Clone the repository:
    ```bash
@@ -94,9 +113,6 @@ DodoShot is a lightweight, native macOS screenshot application built with SwiftU
    ```
 
 3. Build and run (⌘R)
-
-### Download
-Pre-built releases coming soon.
 
 ## Usage
 
