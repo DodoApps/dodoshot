@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var captureService: ScreenCaptureService!
     private var hotkeyManager: HotkeyManager!
     private var permissionWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var hasShownPermissionWindow = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -93,15 +94,144 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 image.isTemplate = true
                 button.image = image
             }
-            button.action = #selector(togglePopover)
+            button.action = #selector(handleStatusItemClick)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         // Create popover
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 280, height: 360)
+        popover.contentSize = NSSize(width: 300, height: 400)
         popover.behavior = .transient
         popover.animates = true
         popover.contentViewController = NSHostingController(rootView: MenuBarView())
+
+        // Create right-click menu
+        let menu = NSMenu()
+
+        // Appearance submenu
+        let appearanceMenu = NSMenu()
+        let darkItem = NSMenuItem(title: "Dark", action: #selector(setDarkMode), keyEquivalent: "")
+        let lightItem = NSMenuItem(title: "Light", action: #selector(setLightMode), keyEquivalent: "")
+        let systemItem = NSMenuItem(title: "System", action: #selector(setSystemMode), keyEquivalent: "")
+
+        // Mark current mode
+        updateAppearanceMenuItems(darkItem: darkItem, lightItem: lightItem, systemItem: systemItem)
+
+        appearanceMenu.addItem(darkItem)
+        appearanceMenu.addItem(lightItem)
+        appearanceMenu.addItem(systemItem)
+
+        let appearanceMenuItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+        appearanceMenuItem.submenu = appearanceMenu
+
+        menu.addItem(appearanceMenuItem)
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Quit DodoShot", action: #selector(quitApp), keyEquivalent: "q"))
+
+        statusItem.menu = nil // We'll show it manually on right-click
+    }
+
+    @objc private func handleStatusItemClick() {
+        guard let event = NSApp.currentEvent else { return }
+
+        if event.type == .rightMouseUp {
+            // Show context menu on right-click
+            showContextMenu()
+        } else {
+            // Show popover on left-click
+            togglePopover()
+        }
+    }
+
+    private func showContextMenu() {
+        let menu = NSMenu()
+
+        // Appearance submenu
+        let appearanceMenu = NSMenu()
+        let darkItem = NSMenuItem(title: "Dark", action: #selector(setDarkMode), keyEquivalent: "")
+        let lightItem = NSMenuItem(title: "Light", action: #selector(setLightMode), keyEquivalent: "")
+        let systemItem = NSMenuItem(title: "System", action: #selector(setSystemMode), keyEquivalent: "")
+
+        darkItem.target = self
+        lightItem.target = self
+        systemItem.target = self
+
+        // Mark current mode
+        updateAppearanceMenuItems(darkItem: darkItem, lightItem: lightItem, systemItem: systemItem)
+
+        appearanceMenu.addItem(darkItem)
+        appearanceMenu.addItem(lightItem)
+        appearanceMenu.addItem(systemItem)
+
+        let appearanceMenuItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+        appearanceMenuItem.submenu = appearanceMenu
+
+        menu.addItem(appearanceMenuItem)
+        menu.addItem(NSMenuItem.separator())
+
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quit DodoShot", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    private func updateAppearanceMenuItems(darkItem: NSMenuItem, lightItem: NSMenuItem, systemItem: NSMenuItem) {
+        let currentMode = SettingsManager.shared.settings.appearanceMode
+        darkItem.state = currentMode == .dark ? .on : .off
+        lightItem.state = currentMode == .light ? .on : .off
+        systemItem.state = currentMode == .system ? .on : .off
+    }
+
+    @objc private func setDarkMode() {
+        SettingsManager.shared.settings.appearanceMode = .dark
+    }
+
+    @objc private func setLightMode() {
+        SettingsManager.shared.settings.appearanceMode = .light
+    }
+
+    @objc private func setSystemMode() {
+        SettingsManager.shared.settings.appearanceMode = .system
+    }
+
+    @objc private func openSettings() {
+        // Close popover if open
+        if popover.isShown {
+            popover.performClose(nil)
+        }
+
+        // Create or show settings window
+        if settingsWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "DodoShot Settings"
+            window.center()
+            window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(rootView: SettingsView())
+            settingsWindow = window
+        }
+
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
     }
 
     @objc private func togglePopover() {
@@ -117,6 +247,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func closePopover() {
         popover.performClose(nil)
+    }
+}
+
+// MARK: - Appearance Extension for Views
+extension View {
+    func applyAppTheme() -> some View {
+        self.preferredColorScheme(SettingsManager.shared.settings.appearanceMode.colorScheme)
+    }
+}
+
+extension AppearanceMode {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
     }
 }
 
