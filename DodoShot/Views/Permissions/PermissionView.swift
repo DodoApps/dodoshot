@@ -116,7 +116,7 @@ struct PermissionView: View {
             }
             .padding(.bottom, 24)
         }
-        .frame(width: 400, height: 480)
+        .frame(width: 400, height: 520)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
