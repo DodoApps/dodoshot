@@ -8,6 +8,8 @@
   <strong>A beautiful, open-source screenshot tool for macOS</strong>
 </p>
 
+<img width="1306" height="736" alt="image" src="https://github.com/user-attachments/assets/a24b9914-0aab-4a03-993a-144069790290" />
+
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
