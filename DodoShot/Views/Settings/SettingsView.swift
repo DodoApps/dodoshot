@@ -12,23 +12,17 @@ struct SettingsView: View {
                 }
                 .tag(0)
 
-            HotkeysSettingsTab()
-                .tabItem {
-                    Label(L10n.Settings.hotkeys, systemImage: "keyboard")
-                }
-                .tag(1)
-
             AISettingsTab()
                 .tabItem {
                     Label(L10n.Settings.ai, systemImage: "sparkles")
                 }
-                .tag(2)
+                .tag(1)
 
             AboutTab()
                 .tabItem {
                     Label(L10n.Settings.about, systemImage: "info.circle")
                 }
-                .tag(3)
+                .tag(2)
         }
         .frame(width: 520, height: 420)
     }

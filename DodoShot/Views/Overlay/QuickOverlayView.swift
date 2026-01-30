@@ -92,14 +92,14 @@ class QuickOverlayManager: ObservableObject {
     private func createCompactOverlayWindow(for item: OverlayItem) {
         guard let screen = NSScreen.main else { return }
 
-        let windowSize = NSSize(width: 300, height: 88)
+        let windowSize = NSSize(width: 450, height: 132)
         let padding: CGFloat = 20
 
         // Position in bottom-right corner, stacking upward for multiple overlays
         let existingCount = CGFloat(overlays.count - 1)
         let windowOrigin = NSPoint(
             x: screen.visibleFrame.maxX - windowSize.width - padding,
-            y: screen.visibleFrame.minY + padding + (existingCount * (windowSize.height + 10))
+            y: screen.visibleFrame.minY + padding + (existingCount * (windowSize.height + 15))
         )
 
         let window = NSWindow(
@@ -247,7 +247,7 @@ class QuickOverlayManager: ObservableObject {
 
         for (index, item) in overlays.enumerated() {
             if let window = windows[item.id] {
-                let yOffset = CGFloat(index) * 90
+                let yOffset = CGFloat(index) * 147
                 let newOrigin = NSPoint(
                     x: screen.visibleFrame.maxX - window.frame.width - 20,
                     y: baseY + yOffset
@@ -312,15 +312,15 @@ struct CompactOverlayView: View {
     @State private var isDraggingImage = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 18) {
             // Thumbnail (draggable for drag-and-drop)
             Image(nsImage: screenshot.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 84, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(isDraggingImage ? Color.blue.opacity(0.5) : Color.white.opacity(0.15), lineWidth: isDraggingImage ? 2 : 1)
                 )
                 .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
@@ -342,22 +342,22 @@ struct CompactOverlayView: View {
                 }
 
             // Info & Actions
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Title & time
                 HStack {
                     Text(screenshot.captureType.rawValue)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.primary)
 
                     Spacer()
 
                     Text(timeAgo(screenshot.capturedAt))
-                        .font(.system(size: 10))
+                        .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
 
                 // Quick actions
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     CompactActionButton(icon: "doc.on.clipboard", tooltip: L10n.Overlay.copy) {
                         copyToClipboard()
                     }
@@ -376,9 +376,9 @@ struct CompactOverlayView: View {
                     // Expand/Edit button
                     Button(action: onExpand) {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.secondary)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 36, height: 36)
                             .background(
                                 Circle()
                                     .fill(Color.primary.opacity(0.08))
@@ -393,17 +393,17 @@ struct CompactOverlayView: View {
             if isHovered {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 26, height: 26)
                         .background(Circle().fill(Color.black.opacity(0.5)))
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(12)
-        .frame(height: 80)
+        .padding(18)
+        .frame(height: 120)
         .background(
             ZStack {
                 // Glass effect
@@ -639,11 +639,11 @@ struct CompactActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundColor(isHovered ? .primary : .secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: 42, height: 42)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 8)
                         .fill(Color.primary.opacity(isHovered ? 0.12 : 0.06))
                 )
         }

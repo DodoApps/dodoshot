@@ -27,7 +27,7 @@ class AnnotationEditorWindowController {
         )
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1400, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -37,7 +37,7 @@ class AnnotationEditorWindowController {
         window.titlebarAppearsTransparent = false
         window.titleVisibility = .visible
         window.backgroundColor = NSColor.windowBackgroundColor
-        window.minSize = NSSize(width: 1100, height: 700)
+        window.minSize = NSSize(width: 1300, height: 700)
         window.level = .normal  // Regular window level, not floating
         window.collectionBehavior = [.managed, .participatesInCycle]  // Show in cmd-tab
         window.center()
@@ -140,14 +140,6 @@ struct AnnotationEditorView: View {
         case .text:
             let textRect = CGRect(x: start.x - tolerance, y: start.y - tolerance, width: 100 + tolerance * 2, height: 30 + tolerance * 2)
             return textRect.contains(point)
-        case .callout:
-            let rect = CGRect(
-                x: min(start.x, end.x) - tolerance,
-                y: min(start.y, end.y) - tolerance,
-                width: abs(end.x - start.x) + tolerance * 2,
-                height: abs(end.y - start.y) + tolerance * 2
-            )
-            return rect.contains(point)
         case .stepCounter:
             // Step counter is a circle at startPoint
             let radius = annotation.fontSize + 10
@@ -1345,9 +1337,6 @@ struct AnnotationEditorView: View {
                 string.draw(at: start)
             }
 
-        case .callout:
-            drawCalloutOnImage(annotation: annotation, in: context, scaleX: scaleX, scaleY: scaleY)
-
         case .blur:
             let rect = CGRect(
                 x: min(start.x, end.x),
@@ -1486,85 +1475,6 @@ struct AnnotationEditorView: View {
         context.strokePath()
     }
 
-    private func drawCalloutOnImage(annotation: Annotation, in context: CGContext, scaleX: CGFloat, scaleY: CGFloat) {
-        let start = CGPoint(x: annotation.startPoint.x * scaleX, y: annotation.startPoint.y * scaleY)
-        let end = CGPoint(x: annotation.endPoint.x * scaleX, y: annotation.endPoint.y * scaleY)
-        let text = annotation.text ?? ""
-
-        // Calculate box dimensions
-        let padding: CGFloat = 12 * min(scaleX, scaleY)
-        let fontSize = annotation.fontSize * min(scaleX, scaleY)
-        let cornerRadius: CGFloat = 6 * min(scaleX, scaleY)
-        let arrowSize: CGFloat = 20 * min(scaleX, scaleY)
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
-            .foregroundColor: NSColor.white
-        ]
-        let textSize = (text as NSString).size(withAttributes: attributes)
-
-        let boxWidth = textSize.width + padding * 2
-        let boxHeight = textSize.height + padding * 2
-
-        // Box rect (excluding arrow)
-        let boxRect = CGRect(
-            x: min(start.x, end.x),
-            y: min(start.y, end.y),
-            width: max(boxWidth, abs(end.x - start.x)),
-            height: max(boxHeight, abs(end.y - start.y) - arrowSize)
-        )
-
-        // Draw filled rounded rectangle
-        context.setFillColor(annotation.color.cgColor)
-        let boxPath = CGPath(roundedRect: boxRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        context.addPath(boxPath)
-        context.fillPath()
-
-        // Draw arrow tip based on direction
-        let arrowDirection = annotation.calloutArrowDirection
-        var arrowPath = CGMutablePath()
-
-        switch arrowDirection {
-        case .bottomLeft:
-            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.maxY + arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.maxY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.maxY))
-            arrowPath.closeSubpath()
-
-        case .bottomRight:
-            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.maxY + arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.maxY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.maxY))
-            arrowPath.closeSubpath()
-
-        case .topLeft:
-            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.minY - arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.minY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.minY))
-            arrowPath.closeSubpath()
-
-        case .topRight:
-            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.minY - arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.minY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.minY))
-            arrowPath.closeSubpath()
-        }
-
-        context.addPath(arrowPath)
-        context.fillPath()
-
-        // Draw text
-        let textPoint = CGPoint(
-            x: boxRect.minX + padding,
-            y: boxRect.minY + padding
-        )
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        attributedString.draw(at: textPoint)
-    }
 }
 
 // MARK: - Canvas Background
@@ -1604,7 +1514,6 @@ struct AnnotationToolButton: View {
         case .ellipse: return .green
         case .line: return .orange
         case .text: return .purple
-        case .callout: return .orange
         case .blur: return .gray
         case .pixelate: return .orange
         case .highlight: return .yellow
@@ -1623,7 +1532,6 @@ struct AnnotationToolButton: View {
         case .ellipse: return "Circle"
         case .line: return "Line"
         case .text: return "Text"
-        case .callout: return "Callout"
         case .blur: return "Blur"
         case .pixelate: return "Pixelate"
         case .highlight: return "Highlight"
@@ -1945,6 +1853,7 @@ struct AnnotationCanvasView: NSViewRepresentable {
                 }
 
                 // Only add annotation if it has meaningful size (not just a click)
+                // Exception: step counter works with single clicks
                 let minSize: CGFloat = 5
                 let width = abs(annotation.endPoint.x - annotation.startPoint.x)
                 let height = abs(annotation.endPoint.y - annotation.startPoint.y)
@@ -1953,7 +1862,10 @@ struct AnnotationCanvasView: NSViewRepresentable {
                 // For freehand/erase, check if there's actual movement
                 let hasFreehandMovement = (currentTool == .freehand || currentTool == .erase) && annotation.points.count > 2
 
-                if hasSize || hasFreehandMovement {
+                // Step counter is point-based - always allow
+                let isStepCounter = currentTool == .stepCounter
+
+                if hasSize || hasFreehandMovement || isStepCounter {
                     parent.annotations.append(annotation)
                 }
                 parent.currentAnnotation = nil
@@ -2023,14 +1935,6 @@ struct AnnotationCanvasView: NSViewRepresentable {
             case .text:
                 let textRect = CGRect(x: start.x - tolerance, y: start.y - tolerance, width: 100 + tolerance * 2, height: 30 + tolerance * 2)
                 return textRect.contains(point)
-            case .callout:
-                let rect = CGRect(
-                    x: min(start.x, end.x) - tolerance,
-                    y: min(start.y, end.y) - tolerance,
-                    width: abs(end.x - start.x) + tolerance * 2,
-                    height: abs(end.y - start.y) + tolerance * 2
-                )
-                return rect.contains(point)
             case .freehand, .erase:
                 for pathPoint in annotation.points {
                     if abs(pathPoint.x - point.x) < tolerance && abs(pathPoint.y - point.y) < tolerance {
@@ -2192,7 +2096,7 @@ class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
         switch annotation.type {
         case .arrow, .line:
             return isPointNearLine(point: point, lineStart: start, lineEnd: end, tolerance: tolerance)
-        case .rectangle, .blur, .highlight, .callout, .pixelate:
+        case .rectangle, .blur, .highlight, .pixelate:
             let rect = CGRect(
                 x: min(start.x, end.x) - tolerance,
                 y: min(start.y, end.y) - tolerance,
@@ -2397,13 +2301,6 @@ class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
             )
         case .text:
             return CGRect(x: start.x, y: start.y, width: 100, height: 30)
-        case .callout:
-            return CGRect(
-                x: min(start.x, end.x),
-                y: min(start.y, end.y),
-                width: abs(end.x - start.x),
-                height: abs(end.y - start.y)
-            )
         case .freehand, .erase:
             guard !annotation.points.isEmpty else {
                 return CGRect(origin: start, size: .zero)
@@ -2470,9 +2367,6 @@ class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
                 let string = NSAttributedString(string: text, attributes: attributes)
                 string.draw(at: start)
             }
-
-        case .callout:
-            drawCallout(annotation: annotation, in: context)
 
         case .blur:
             // Draw blur effect preview (crosshatch pattern to indicate blur)
@@ -2558,86 +2452,6 @@ class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
         context.move(to: end)
         context.addLine(to: arrowPoint2)
         context.strokePath()
-    }
-
-    private func drawCallout(annotation: Annotation, in context: CGContext) {
-        let start = annotation.startPoint
-        let end = annotation.endPoint
-        let text = annotation.text ?? ""
-
-        // Calculate box dimensions
-        let padding: CGFloat = 12
-        let fontSize = annotation.fontSize
-        let cornerRadius: CGFloat = 6
-        let arrowSize: CGFloat = 20
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
-            .foregroundColor: NSColor.white
-        ]
-        let textSize = (text as NSString).size(withAttributes: attributes)
-
-        let boxWidth = textSize.width + padding * 2
-        let boxHeight = textSize.height + padding * 2
-
-        // Box rect (excluding arrow)
-        let boxRect = CGRect(
-            x: min(start.x, end.x),
-            y: min(start.y, end.y),
-            width: max(boxWidth, abs(end.x - start.x)),
-            height: max(boxHeight, abs(end.y - start.y) - arrowSize)
-        )
-
-        // Draw filled rounded rectangle
-        context.setFillColor(annotation.color.cgColor)
-        let boxPath = CGPath(roundedRect: boxRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        context.addPath(boxPath)
-        context.fillPath()
-
-        // Draw arrow tip based on direction
-        let arrowDirection = annotation.calloutArrowDirection
-        var arrowPath = CGMutablePath()
-
-        switch arrowDirection {
-        case .bottomLeft:
-            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.maxY + arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.maxY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.maxY))
-            arrowPath.closeSubpath()
-
-        case .bottomRight:
-            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.maxY + arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.maxY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.maxY))
-            arrowPath.closeSubpath()
-
-        case .topLeft:
-            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.minY - arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.minY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.minY))
-            arrowPath.closeSubpath()
-
-        case .topRight:
-            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.minY - arrowSize)
-            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.minY))
-            arrowPath.addLine(to: arrowTip)
-            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.minY))
-            arrowPath.closeSubpath()
-        }
-
-        context.addPath(arrowPath)
-        context.fillPath()
-
-        // Draw text
-        let textPoint = CGPoint(
-            x: boxRect.minX + padding,
-            y: boxRect.minY + padding
-        )
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        attributedString.draw(at: textPoint)
     }
 
     // MARK: - Step Counter Drawing
