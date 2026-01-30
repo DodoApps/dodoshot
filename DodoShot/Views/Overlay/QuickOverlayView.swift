@@ -9,11 +9,13 @@ class QuickOverlayManager: ObservableObject {
     @Published var overlays: [OverlayItem] = []
 
     private var windows: [UUID: NSWindow] = [:]
+    private var autoDismissTimers: [UUID: Timer] = [:]
 
     struct OverlayItem: Identifiable {
         let id: UUID
         let screenshot: Screenshot
         var isExpanded: Bool = false
+        var isPaused: Bool = false  // Pause auto-dismiss when hovered
     }
 
     private init() {}
@@ -21,14 +23,59 @@ class QuickOverlayManager: ObservableObject {
     func showOverlay(for screenshot: Screenshot) {
         let item = OverlayItem(id: screenshot.id, screenshot: screenshot)
         overlays.append(item)
-        createWindow(for: item)
+        createCompactOverlayWindow(for: item)
+
+        // Setup auto-dismiss if enabled
+        let settings = SettingsManager.shared.settings
+        if settings.quickOverlayAutoDismiss && settings.quickOverlayTimeout > 0 {
+            startAutoDismissTimer(for: screenshot.id, timeout: settings.quickOverlayTimeout)
+        }
+    }
+
+    func pauseAutoDismiss(for id: UUID) {
+        autoDismissTimers[id]?.invalidate()
+        autoDismissTimers.removeValue(forKey: id)
+        if let index = overlays.firstIndex(where: { $0.id == id }) {
+            overlays[index].isPaused = true
+        }
+    }
+
+    func resumeAutoDismiss(for id: UUID) {
+        let settings = SettingsManager.shared.settings
+        if settings.quickOverlayAutoDismiss && settings.quickOverlayTimeout > 0 {
+            if let index = overlays.firstIndex(where: { $0.id == id }) {
+                overlays[index].isPaused = false
+            }
+            startAutoDismissTimer(for: id, timeout: settings.quickOverlayTimeout)
+        }
+    }
+
+    private func startAutoDismissTimer(for id: UUID, timeout: Double) {
+        autoDismissTimers[id]?.invalidate()
+        autoDismissTimers[id] = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+            self?.dismissOverlay(id: id)
+        }
     }
 
     func dismissOverlay(id: UUID) {
+        // Cancel auto-dismiss timer
+        autoDismissTimers[id]?.invalidate()
+        autoDismissTimers.removeValue(forKey: id)
+
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             overlays.removeAll { $0.id == id }
         }
-        windows[id]?.close()
+
+        // Animate window out
+        if let window = windows[id] {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                window.animator().alphaValue = 0
+            } completionHandler: {
+                window.close()
+            }
+        }
         windows.removeValue(forKey: id)
         repositionOverlays()
     }
@@ -39,6 +86,81 @@ class QuickOverlayManager: ObservableObject {
         }
         windows.removeAll()
         overlays.removeAll()
+    }
+
+    /// Creates a compact overlay window in the corner (lightweight post-capture overlay)
+    private func createCompactOverlayWindow(for item: OverlayItem) {
+        guard let screen = NSScreen.main else { return }
+
+        let windowSize = NSSize(width: 300, height: 88)
+        let padding: CGFloat = 20
+
+        // Position in bottom-right corner, stacking upward for multiple overlays
+        let existingCount = CGFloat(overlays.count - 1)
+        let windowOrigin = NSPoint(
+            x: screen.visibleFrame.maxX - windowSize.width - padding,
+            y: screen.visibleFrame.minY + padding + (existingCount * (windowSize.height + 10))
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: windowOrigin, size: windowSize),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.level = .floating
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+        let contentView = CompactOverlayView(
+            screenshot: item.screenshot,
+            onDismiss: { [weak self] in
+                self?.dismissOverlay(id: item.id)
+            },
+            onExpand: { [weak self] in
+                Task { @MainActor in
+                    self?.openEditor(for: item.screenshot)
+                    self?.dismissOverlay(id: item.id)
+                }
+            },
+            onHoverStart: { [weak self] in
+                self?.pauseAutoDismiss(for: item.id)
+            },
+            onHoverEnd: { [weak self] in
+                self?.resumeAutoDismiss(for: item.id)
+            }
+        )
+
+        window.contentView = NSHostingView(rootView: contentView)
+
+        // Animate in from right
+        window.setFrameOrigin(NSPoint(x: windowOrigin.x + 50, y: windowOrigin.y))
+        window.alphaValue = 0
+        window.orderFront(nil)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrameOrigin(windowOrigin)
+            window.animator().alphaValue = 1
+        }
+
+        windows[item.id] = window
+    }
+
+    /// Opens the full annotation editor (used when expanding from compact overlay)
+    @MainActor
+    func openEditor(for screenshot: Screenshot) {
+        AnnotationEditorWindowController.shared.showEditor(for: screenshot) { updatedScreenshot in
+            Task { @MainActor in
+                ScreenCaptureService.shared.saveToFile(updatedScreenshot)
+            }
+        }
     }
 
     private func createWindow(for item: OverlayItem) {
@@ -181,14 +303,17 @@ struct CompactOverlayView: View {
     let screenshot: Screenshot
     let onDismiss: () -> Void
     let onExpand: () -> Void
+    var onHoverStart: (() -> Void)?
+    var onHoverEnd: (() -> Void)?
 
     @State private var isHovered = false
     @State private var showCopiedBadge = false
     @State private var dragOffset: CGSize = .zero
+    @State private var isDraggingImage = false
 
     var body: some View {
         HStack(spacing: 12) {
-            // Thumbnail
+            // Thumbnail (draggable for drag-and-drop)
             Image(nsImage: screenshot.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -196,9 +321,25 @@ struct CompactOverlayView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        .stroke(isDraggingImage ? Color.blue.opacity(0.5) : Color.white.opacity(0.15), lineWidth: isDraggingImage ? 2 : 1)
                 )
                 .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                .scaleEffect(isDraggingImage ? 1.05 : 1.0)
+                .onDrag {
+                    isDraggingImage = true
+                    // Create drag item with image
+                    let provider = NSItemProvider(object: screenshot.image)
+                    return provider
+                }
+                .onChange(of: isDraggingImage) { _, newValue in
+                    if !newValue {
+                        // Drag ended - dismiss if dropped successfully
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            // Reset state
+                            isDraggingImage = false
+                        }
+                    }
+                }
 
             // Info & Actions
             VStack(alignment: .leading, spacing: 6) {
@@ -232,9 +373,9 @@ struct CompactOverlayView: View {
 
                     Spacer()
 
-                    // Expand button
+                    // Expand/Edit button
                     Button(action: onExpand) {
-                        Image(systemName: "chevron.down")
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                             .frame(width: 24, height: 24)
@@ -244,6 +385,7 @@ struct CompactOverlayView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .help("Open in editor")
                 }
             }
 
@@ -284,6 +426,11 @@ struct CompactOverlayView: View {
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
+            }
+            if hovering {
+                onHoverStart?()
+            } else {
+                onHoverEnd?()
             }
         }
         .overlay(
@@ -335,7 +482,7 @@ struct CompactOverlayView: View {
     }
 
     private func openAnnotationEditor() {
-        // TODO: Open annotation window
+        AnnotationEditorWindowController.shared.showEditor(for: screenshot) { _ in }
         onDismiss()
     }
 

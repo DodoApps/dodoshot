@@ -38,30 +38,50 @@ DodoShot is a lightweight, native macOS screenshot application built with SwiftU
 - **Scrolling capture** — Capture long pages by automatically scrolling and stitching
 
 ### Quick overlay
-- Stacking overlays for multiple captures
-- Swipe to dismiss
+- Compact corner overlay appears after capture for immediate actions
+- Auto-dismiss with configurable timeout (pauses on hover)
+- Drag-and-drop thumbnail directly into other apps
 - Quick actions: copy, save, annotate, pin
-- Expandable preview with metadata
+- Swipe to dismiss
+- Stacking overlays for multiple captures
+
+### Floating screenshots
+- Pin any screenshot as an always-on-top floating window
+- Adjustable opacity for reference images
+- Click-through mode — interact with apps beneath the screenshot
+- Resize and reposition freely
+- Persists across app switches and spaces
 
 ### Annotation tools
-- Arrows, rectangles, ellipses, and lines
-- Text annotations
-- Blur sensitive areas
-- Highlight important content
-- Freehand drawing
-- Color picker with 9 preset colors
-- Adjustable stroke width
+- **Arrows, rectangles, ellipses, and lines** — Basic shapes
+- **Text annotations** — Add labels and notes
+- **Callouts** — Speech bubble annotations with customizable arrow direction
+- **Blur** — Obscure sensitive information
+- **Pixelate** — Privacy redaction with adjustable intensity
+- **Highlight** — Draw attention to important content
+- **Freehand drawing** — Sketch freely
+- **Step counters** — Numbered markers for tutorials (supports 1,2,3 / A,B,C / I,II,III formats)
+- **Eraser** — Remove parts of annotations
+- **Color picker** — 9 preset colors plus on-canvas color sampling
+- **Adjustable stroke width** — Fine-tune line thickness
+- **Layer management** — Bring forward, send backward, arrange z-order
+
+### Annotation selection and movement
+- Select any annotation to modify it
+- Drag to reposition annotations
+- Change color or stroke width of selected annotations
+- Delete selected annotations
 
 ### Measurement tools
 - Pixel ruler for measuring on-screen elements
-- Color picker to sample any color on screen
+- Color picker to sample any color on screen with hex code copy
 
 ### Productivity features
-- Pin screenshots as floating windows
-- Auto-copy to clipboard
+- Auto-copy to clipboard after capture
 - Capture history with grid/list views
 - Hide desktop icons during capture
 - Global keyboard shortcuts
+- Customizable backdrop behind screenshots in editor
 
 ### AI-powered (optional)
 - OCR text extraction
@@ -127,6 +147,7 @@ xattr -cr /Applications/DodoShot.app
    - Save to file
    - Open annotation editor
    - Pin as floating window
+   - Drag thumbnail to other apps
 5. Access capture history from the menu bar
 
 ## Keyboard shortcuts

@@ -1,6 +1,61 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Annotation Editor Window Controller
+class AnnotationEditorWindowController {
+    static let shared = AnnotationEditorWindowController()
+
+    private var window: NSWindow?
+    private var onSaveCallback: ((Screenshot) -> Void)?
+
+    private init() {}
+
+    func showEditor(for screenshot: Screenshot, onSave: @escaping (Screenshot) -> Void) {
+        // Close existing window if any
+        window?.close()
+        onSaveCallback = onSave
+
+        let editorView = AnnotationEditorView(
+            screenshot: screenshot,
+            onSave: { [weak self] updatedScreenshot in
+                self?.onSaveCallback?(updatedScreenshot)
+                self?.closeEditor()
+            },
+            onCancel: { [weak self] in
+                self?.closeEditor()
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "DodoShot - Edit screenshot"
+        window.titlebarAppearsTransparent = false
+        window.titleVisibility = .visible
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.minSize = NSSize(width: 1100, height: 700)
+        window.level = .normal  // Regular window level, not floating
+        window.collectionBehavior = [.managed, .participatesInCycle]  // Show in cmd-tab
+        window.center()
+
+        window.contentView = NSHostingView(rootView: editorView)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        self.window = window
+    }
+
+    func closeEditor() {
+        window?.close()
+        window = nil
+        onSaveCallback = nil
+    }
+}
+
 struct AnnotationEditorView: View {
     @State var screenshot: Screenshot
     let onSave: (Screenshot) -> Void
@@ -12,6 +67,8 @@ struct AnnotationEditorView: View {
     @State private var currentText: String = ""
     @State private var isAddingText = false
     @State private var textPosition: CGPoint = .zero
+    @State private var isColorPickerHovered = false
+    @State private var actualImageSize: CGSize = .zero
     @State private var annotations: [Annotation] = []
     @State private var currentAnnotation: Annotation?
     @State private var imageSize: CGSize = .zero
@@ -64,7 +121,7 @@ struct AnnotationEditorView: View {
         case .arrow, .line:
             // Check if point is near the line
             return pointNearLine(point: point, lineStart: start, lineEnd: end, tolerance: tolerance)
-        case .rectangle, .blur, .highlight:
+        case .rectangle, .blur, .pixelate, .highlight:
             let rect = CGRect(
                 x: min(start.x, end.x) - tolerance,
                 y: min(start.y, end.y) - tolerance,
@@ -83,7 +140,20 @@ struct AnnotationEditorView: View {
         case .text:
             let textRect = CGRect(x: start.x - tolerance, y: start.y - tolerance, width: 100 + tolerance * 2, height: 30 + tolerance * 2)
             return textRect.contains(point)
-        case .freehand:
+        case .callout:
+            let rect = CGRect(
+                x: min(start.x, end.x) - tolerance,
+                y: min(start.y, end.y) - tolerance,
+                width: abs(end.x - start.x) + tolerance * 2,
+                height: abs(end.y - start.y) + tolerance * 2
+            )
+            return rect.contains(point)
+        case .stepCounter:
+            // Step counter is a circle at startPoint
+            let radius = annotation.fontSize + 10
+            let distance = hypot(point.x - start.x, point.y - start.y)
+            return distance < radius + tolerance
+        case .freehand, .erase:
             for pathPoint in annotation.points {
                 if abs(pathPoint.x - point.x) < tolerance && abs(pathPoint.y - point.y) < tolerance {
                     return true
@@ -119,45 +189,115 @@ struct AnnotationEditorView: View {
         }
     }
 
+    private func updateSelectedAnnotationStrokeWidth(_ newWidth: CGFloat) {
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            annotations[index].strokeWidth = newWidth
+        }
+    }
+
+    private func updateSelectedAnnotationColor(_ newColor: Color) {
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            annotations[index].color = NSColor(newColor)
+        }
+    }
+
+    // MARK: - Layer Management (Z-Order)
+
+    /// Bring selected annotation forward (one layer up)
+    private func bringForward() {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }),
+              index < annotations.count - 1 else { return }
+
+        annotations.swapAt(index, index + 1)
+        updateZIndices()
+    }
+
+    /// Send selected annotation backward (one layer down)
+    private func sendBackward() {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }),
+              index > 0 else { return }
+
+        annotations.swapAt(index, index - 1)
+        updateZIndices()
+    }
+
+    /// Bring selected annotation to front (top layer)
+    private func bringToFront() {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+
+        let annotation = annotations.remove(at: index)
+        annotations.append(annotation)
+        updateZIndices()
+    }
+
+    /// Send selected annotation to back (bottom layer)
+    private func sendToBack() {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+
+        let annotation = annotations.remove(at: index)
+        annotations.insert(annotation, at: 0)
+        updateZIndices()
+    }
+
+    /// Update z-index values based on array position
+    private func updateZIndices() {
+        for (index, _) in annotations.enumerated() {
+            annotations[index].zIndex = index
+        }
+    }
+
+    /// Get current step counter number (for auto-increment)
+    private func getNextStepNumber() -> Int {
+        let stepAnnotations = annotations.filter { $0.type == .stepCounter }
+        return stepAnnotations.count + 1
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
             toolbar
+                .frame(height: 60)
 
             Divider()
 
             // Main content area with canvas and optional backdrop panel
             HStack(spacing: 0) {
-                // Canvas area
+                // Canvas area - fills remaining space
                 ZStack {
                     // Background pattern
                     CanvasBackground()
 
                     GeometryReader { geometry in
-                        ZStack {
-                            // Backdrop (if enabled)
-                            if backdropEnabled {
-                                backdropView
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
+                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                            ZStack {
+                                // Backdrop (if enabled)
+                                if backdropEnabled {
+                                    backdropView
+                                }
 
-                            // Screenshot image with backdrop styling
-                            screenshotImageView
+                                // Screenshot image with backdrop styling
+                                screenshotImageView
+                            }
+                            .frame(
+                                minWidth: geometry.size.width - 48,
+                                minHeight: geometry.size.height - 48
+                            )
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .padding(24)
-
-                    // Text input overlay
-                    if isAddingText {
-                        textInputOverlay
-                    }
 
                     // OCR result notification
                     if showOCRResult, let result = ocrResult {
                         ocrResultOverlay(result: result)
                     }
                 }
+                .clipped()
 
                 // Backdrop settings panel (right side)
                 if showBackdropPanel {
@@ -170,8 +310,9 @@ struct AnnotationEditorView: View {
 
             // Bottom action bar
             bottomBar
+                .frame(height: 50)
         }
-        .frame(minWidth: showBackdropPanel ? 1200 : 900, minHeight: 650)
+        .frame(minWidth: 1100, idealWidth: showBackdropPanel ? 1300 : 1100, minHeight: 700)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -183,9 +324,15 @@ struct AnnotationEditorView: View {
             .scaleEffect(zoom)
             .background(
                 GeometryReader { imageGeometry in
-                    Color.clear.onAppear {
-                        imageSize = imageGeometry.size
-                    }
+                    Color.clear
+                        .onAppear {
+                            imageSize = imageGeometry.size
+                            actualImageSize = imageGeometry.size
+                        }
+                        .onChange(of: imageGeometry.size) { newSize in
+                            imageSize = newSize
+                            actualImageSize = newSize
+                        }
                 }
             )
             .overlay(
@@ -197,6 +344,7 @@ struct AnnotationEditorView: View {
                     strokeWidth: strokeWidth,
                     isAddingText: $isAddingText,
                     textPosition: $textPosition,
+                    currentText: $currentText,
                     selectedAnnotationId: $selectedAnnotationId,
                     onSelectAnnotation: { point in
                         selectAnnotationAt(point)
@@ -210,6 +358,9 @@ struct AnnotationEditorView: View {
                     onColorPicked: { color, hex in
                         hoveredColor = color
                         hoveredColorHex = hex
+                    },
+                    onTextAdded: { text, position in
+                        addTextAnnotationDirect(text: text, position: position)
                     }
                 )
             )
@@ -227,16 +378,57 @@ struct AnnotationEditorView: View {
 
     // MARK: - Backdrop View
     private var backdropView: some View {
-        Group {
-            if backdropType == .solid {
-                RoundedRectangle(cornerRadius: outerRadius)
-                    .fill(selectedSolidColor)
-            } else {
-                RoundedRectangle(cornerRadius: outerRadius)
-                    .fill(selectedGradient.gradient(direction: gradientDirection))
+        GeometryReader { geometry in
+            let padding: CGFloat = 40
+            let imageAspect = screenshot.image.size.width / screenshot.image.size.height
+            let containerAspect = geometry.size.width / geometry.size.height
+
+            let fittedSize: CGSize = {
+                if imageAspect > containerAspect {
+                    let width = geometry.size.width
+                    let height = width / imageAspect
+                    return CGSize(width: width, height: height)
+                } else {
+                    let height = geometry.size.height
+                    let width = height * imageAspect
+                    return CGSize(width: width, height: height)
+                }
+            }()
+
+            let backdropWidth = fittedSize.width * zoom + padding * 2
+            let backdropHeight = fittedSize.height * zoom + padding * 2
+
+            Group {
+                switch backdropType {
+                case .solid:
+                    RoundedRectangle(cornerRadius: outerRadius)
+                        .fill(selectedSolidColor)
+                case .gradient:
+                    RoundedRectangle(cornerRadius: outerRadius)
+                        .fill(selectedGradient.gradient(direction: gradientDirection))
+                case .transparent:
+                    // Transparent backdrop - show checkerboard pattern for preview
+                    RoundedRectangle(cornerRadius: outerRadius)
+                        .fill(Color.clear)
+                        .background(
+                            CheckerboardPattern()
+                                .clipShape(RoundedRectangle(cornerRadius: outerRadius))
+                        )
+                }
             }
+            .frame(width: backdropWidth, height: backdropHeight)
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
-        .padding(40)
+    }
+
+    private func addTextAnnotationDirect(text: String, position: CGPoint) {
+        let annotation = Annotation(
+            type: .text,
+            startPoint: position,
+            color: NSColor(selectedColor),
+            text: text
+        )
+        annotations.append(annotation)
     }
 
     // MARK: - Backdrop Settings Panel
@@ -281,12 +473,13 @@ struct AnnotationEditorView: View {
 
                     Divider()
 
-                    // Colors
+                    // Colors (not shown for transparent)
                     if backdropType == .solid {
                         solidColorPicker
-                    } else {
+                    } else if backdropType == .gradient {
                         gradientPicker
                     }
+                    // Transparent backdrop shows nothing here - it's just transparent
 
                     Divider()
 
@@ -496,6 +689,8 @@ struct AnnotationEditorView: View {
                         action: {
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 selectedColor = color
+                                // Also update selected annotation if any
+                                updateSelectedAnnotationColor(color)
                             }
                         }
                     )
@@ -522,6 +717,8 @@ struct AnnotationEditorView: View {
                         ) {
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 strokeWidth = CGFloat(width)
+                                // Also update selected annotation if any
+                                updateSelectedAnnotationStrokeWidth(CGFloat(width))
                             }
                         }
                     }
@@ -532,7 +729,11 @@ struct AnnotationEditorView: View {
 
             // Zoom controls
             HStack(spacing: 8) {
-                Button(action: { zoom = max(0.5, zoom - 0.25) }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        zoom = max(0.25, zoom - 0.25)
+                    }
+                }) {
                     Image(systemName: "minus.magnifyingglass")
                         .font(.system(size: 13))
                 }
@@ -544,7 +745,11 @@ struct AnnotationEditorView: View {
                     .foregroundColor(.secondary)
                     .frame(width: 44)
 
-                Button(action: { zoom = min(3.0, zoom + 0.25) }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        zoom = min(3.0, zoom + 0.25)
+                    }
+                }) {
                     Image(systemName: "plus.magnifyingglass")
                         .font(.system(size: 13))
                 }
@@ -563,27 +768,37 @@ struct AnnotationEditorView: View {
                 .fill(Color.primary.opacity(0.1))
                 .frame(width: 1, height: 28)
 
-            // Color under cursor display
+            // Color under cursor display (clickable to copy hex)
             if hoveredColor != nil {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(hoveredColor ?? .clear)
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(hoveredColorHex, forType: .string)
+                }) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(hoveredColor ?? .clear)
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
+                            )
 
-                    Text(hoveredColorHex)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        Text(hoveredColorHex)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(isColorPickerHovered ? .primary : .secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isColorPickerHovered ? Color.primary.opacity(0.08) : Color.primary.opacity(0.04))
+                    )
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.04))
-                )
+                .buttonStyle(.plain)
+                .help("Click to copy hex code")
+                .onHover { hovering in
+                    isColorPickerHovered = hovering
+                }
             }
 
             // Separator
@@ -634,6 +849,43 @@ struct AnnotationEditorView: View {
                     action: clearAll
                 )
             }
+
+            // Layer controls (only shown when annotation is selected)
+            if selectedAnnotationId != nil {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.1))
+                    .frame(width: 1, height: 28)
+
+                HStack(spacing: 4) {
+                    ToolbarActionButton(
+                        icon: "square.3.layers.3d.down.left",
+                        label: "Back",
+                        isDisabled: false,
+                        action: sendToBack
+                    )
+
+                    ToolbarActionButton(
+                        icon: "square.2.layers.3d.bottom.filled",
+                        label: "↓",
+                        isDisabled: false,
+                        action: sendBackward
+                    )
+
+                    ToolbarActionButton(
+                        icon: "square.2.layers.3d.top.filled",
+                        label: "↑",
+                        isDisabled: false,
+                        action: bringForward
+                    )
+
+                    ToolbarActionButton(
+                        icon: "square.3.layers.3d.down.right",
+                        label: "Front",
+                        isDisabled: false,
+                        action: bringToFront
+                    )
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -643,82 +895,6 @@ struct AnnotationEditorView: View {
                 Color.primary.opacity(0.02)
             }
         )
-    }
-
-    // MARK: - Text Input Overlay
-    private var textInputOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    cancelTextInput()
-                }
-
-            VStack(spacing: 20) {
-                // Header
-                HStack {
-                    Image(systemName: "textformat")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.blue)
-
-                    Text(L10n.Annotation.addTextTitle)
-                        .font(.system(size: 15, weight: .semibold))
-                }
-
-                // Text field
-                TextField(L10n.Annotation.textPlaceholder, text: $currentText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.primary.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                            )
-                    )
-                    .frame(width: 300)
-
-                // Buttons
-                HStack(spacing: 12) {
-                    Button(action: cancelTextInput) {
-                        Text(L10n.Annotation.cancel)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.escape)
-
-                    Button(action: addTextAnnotation) {
-                        Text(L10n.Annotation.addText)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(currentText.isEmpty ? Color.accentColor.opacity(0.5) : Color.accentColor)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.return)
-                    .disabled(currentText.isEmpty)
-                }
-            }
-            .padding(28)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(nsColor: .windowBackgroundColor))
-                    .shadow(color: .black.opacity(0.3), radius: 30)
-            )
-        }
     }
 
     // MARK: - Bottom Bar
@@ -802,6 +978,25 @@ struct AnnotationEditorView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                // Save as editable project
+                Button(action: saveProject) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.badge.plus")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Save project")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Save as editable .dodo project file")
 
                 Button(action: saveImage) {
                     HStack(spacing: 6) {
@@ -916,6 +1111,44 @@ struct AnnotationEditorView: View {
         onSave(updatedScreenshot)
     }
 
+    private func saveProject() {
+        // Update screenshot with current annotations
+        var projectScreenshot = screenshot
+        projectScreenshot.annotations = annotations
+
+        do {
+            let project = try DodoShotProject(screenshot: projectScreenshot)
+
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [.init(filenameExtension: "dodo")!]
+            savePanel.nameFieldStringValue = "Screenshot_\(DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short).replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-"))"
+
+            if savePanel.runModal() == .OK, let url = savePanel.url {
+                try project.save(to: url)
+            }
+        } catch {
+            print("Failed to save project: \(error)")
+        }
+    }
+
+    static func openProject() -> Screenshot? {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [.init(filenameExtension: "dodo")!]
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+
+        if openPanel.runModal() == .OK, let url = openPanel.url {
+            do {
+                let project = try DodoShotProject.load(from: url)
+                return project.toScreenshot()
+            } catch {
+                print("Failed to load project: \(error)")
+            }
+        }
+        return nil
+    }
+
     private func renderAnnotatedImage() -> NSImage {
         let originalImage = screenshot.image
         let imageSize = originalImage.size
@@ -976,9 +1209,12 @@ struct AnnotationEditorView: View {
         let backdropRect = NSRect(origin: .zero, size: backdropSize)
         let backdropPath = NSBezierPath(roundedRect: backdropRect, xRadius: outerRadius, yRadius: outerRadius)
 
-        if backdropType == .solid {
+        switch backdropType {
+        case .solid:
             NSColor(selectedSolidColor).setFill()
-        } else {
+            backdropPath.fill()
+
+        case .gradient:
             // Draw gradient
             let colors = selectedGradient.colors.map { NSColor($0) }
             let nsColors = colors as [NSColor]
@@ -1013,10 +1249,11 @@ struct AnnotationEditorView: View {
                     context.restoreGState()
                 }
             }
-        }
 
-        if backdropType == .solid {
-            backdropPath.fill()
+        case .transparent:
+            // Don't fill backdrop - leave it transparent
+            // The backdrop area still provides padding and allows shadow/corner rounding
+            break
         }
 
         // Calculate image rect (centered with padding)
@@ -1118,6 +1355,9 @@ struct AnnotationEditorView: View {
                 string.draw(at: start)
             }
 
+        case .callout:
+            drawCalloutOnImage(annotation: annotation, in: context, scaleX: scaleX, scaleY: scaleY)
+
         case .blur:
             let rect = CGRect(
                 x: min(start.x, end.x),
@@ -1147,9 +1387,85 @@ struct AnnotationEditorView: View {
             }
             context.strokePath()
 
+        case .erase:
+            // Erase draws white over the image
+            context.setStrokeColor(NSColor.white.cgColor)
+            context.setLineWidth(scaledStrokeWidth * 3)
+            guard annotation.points.count > 1 else { return }
+            let scaledPoints = annotation.points.map { CGPoint(x: $0.x * scaleX, y: $0.y * scaleY) }
+            context.move(to: scaledPoints[0])
+            for i in 1..<scaledPoints.count {
+                context.addLine(to: scaledPoints[i])
+            }
+            context.strokePath()
+
+        case .pixelate:
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            // Draw pixelation pattern for export
+            drawPixelateOnImage(in: context, rect: rect, intensity: annotation.redactionIntensity)
+
+        case .stepCounter:
+            // Draw step counter circle with number
+            let fontSize = 16 * min(scaleX, scaleY)
+            let radius = max(scaledStrokeWidth * 2, 16)
+            let stepNumber = annotation.stepNumber ?? 1
+            let displayText = annotation.stepCounterFormat.format(stepNumber)
+
+            // Draw filled circle
+            let circleRect = CGRect(
+                x: start.x - radius,
+                y: start.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            context.setFillColor(annotation.color.cgColor)
+            context.fillEllipse(in: circleRect)
+
+            // Draw text
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
+                .foregroundColor: NSColor.white
+            ]
+            let string = NSAttributedString(string: displayText, attributes: attributes)
+            let textSize = string.size()
+            let textPoint = CGPoint(
+                x: start.x - textSize.width / 2,
+                y: start.y - textSize.height / 2
+            )
+            string.draw(at: textPoint)
+
         case .select:
             break
         }
+    }
+
+    private func drawPixelateOnImage(in context: CGContext, rect: CGRect, intensity: CGFloat) {
+        // Draw a grid pattern to represent pixelation
+        let pixelSize = max(4, (1.0 - intensity) * 20 + 4)
+        context.saveGState()
+        context.clip(to: rect)
+
+        var y = rect.minY
+        while y < rect.maxY {
+            var x = rect.minX
+            var colorIndex = 0
+            while x < rect.maxX {
+                let gray = colorIndex % 2 == 0 ? 0.4 : 0.6
+                context.setFillColor(NSColor(white: CGFloat(gray), alpha: 0.8).cgColor)
+                let pixelRect = CGRect(x: x, y: y, width: pixelSize, height: pixelSize)
+                context.fill(pixelRect)
+                x += pixelSize
+                colorIndex += 1
+            }
+            y += pixelSize
+        }
+
+        context.restoreGState()
     }
 
     private func drawArrowOnImage(from start: CGPoint, to end: CGPoint, in context: CGContext, strokeWidth: CGFloat) {
@@ -1178,6 +1494,86 @@ struct AnnotationEditorView: View {
         context.move(to: end)
         context.addLine(to: arrowPoint2)
         context.strokePath()
+    }
+
+    private func drawCalloutOnImage(annotation: Annotation, in context: CGContext, scaleX: CGFloat, scaleY: CGFloat) {
+        let start = CGPoint(x: annotation.startPoint.x * scaleX, y: annotation.startPoint.y * scaleY)
+        let end = CGPoint(x: annotation.endPoint.x * scaleX, y: annotation.endPoint.y * scaleY)
+        let text = annotation.text ?? ""
+
+        // Calculate box dimensions
+        let padding: CGFloat = 12 * min(scaleX, scaleY)
+        let fontSize = annotation.fontSize * min(scaleX, scaleY)
+        let cornerRadius: CGFloat = 6 * min(scaleX, scaleY)
+        let arrowSize: CGFloat = 20 * min(scaleX, scaleY)
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+
+        let boxWidth = textSize.width + padding * 2
+        let boxHeight = textSize.height + padding * 2
+
+        // Box rect (excluding arrow)
+        let boxRect = CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: max(boxWidth, abs(end.x - start.x)),
+            height: max(boxHeight, abs(end.y - start.y) - arrowSize)
+        )
+
+        // Draw filled rounded rectangle
+        context.setFillColor(annotation.color.cgColor)
+        let boxPath = CGPath(roundedRect: boxRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+        context.addPath(boxPath)
+        context.fillPath()
+
+        // Draw arrow tip based on direction
+        let arrowDirection = annotation.calloutArrowDirection
+        var arrowPath = CGMutablePath()
+
+        switch arrowDirection {
+        case .bottomLeft:
+            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.maxY + arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.maxY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.maxY))
+            arrowPath.closeSubpath()
+
+        case .bottomRight:
+            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.maxY + arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.maxY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.maxY))
+            arrowPath.closeSubpath()
+
+        case .topLeft:
+            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.minY - arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.minY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.minY))
+            arrowPath.closeSubpath()
+
+        case .topRight:
+            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.minY - arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.minY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.minY))
+            arrowPath.closeSubpath()
+        }
+
+        context.addPath(arrowPath)
+        context.fillPath()
+
+        // Draw text
+        let textPoint = CGPoint(
+            x: boxRect.minX + padding,
+            y: boxRect.minY + padding
+        )
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        attributedString.draw(at: textPoint)
     }
 }
 
@@ -1218,10 +1614,14 @@ struct AnnotationToolButton: View {
         case .ellipse: return .green
         case .line: return .orange
         case .text: return .purple
+        case .callout: return .orange
         case .blur: return .gray
+        case .pixelate: return .orange
         case .highlight: return .yellow
         case .freehand: return .pink
         case .select: return .blue
+        case .erase: return .white
+        case .stepCounter: return .red
         }
     }
 
@@ -1233,9 +1633,13 @@ struct AnnotationToolButton: View {
         case .ellipse: return "Circle"
         case .line: return "Line"
         case .text: return "Text"
+        case .callout: return "Callout"
         case .blur: return "Blur"
+        case .pixelate: return "Pixelate"
         case .highlight: return "Highlight"
         case .freehand: return "Draw"
+        case .erase: return "Erase"
+        case .stepCounter: return "Step"
         }
     }
 
@@ -1405,17 +1809,21 @@ struct AnnotationCanvasView: NSViewRepresentable {
     let strokeWidth: CGFloat
     @Binding var isAddingText: Bool
     @Binding var textPosition: CGPoint
+    @Binding var currentText: String
     @Binding var selectedAnnotationId: UUID?
     let onSelectAnnotation: (CGPoint) -> Void
     let onDeleteSelected: () -> Void
     let onUndo: () -> Void
     var onColorPicked: ((Color, String) -> Void)?
+    var onTextAdded: ((String, CGPoint) -> Void)?
 
     func makeNSView(context: Context) -> AnnotationCanvasNSView {
         let view = AnnotationCanvasNSView()
         view.delegate = context.coordinator
         context.coordinator.canvasView = view
         view.onColorPicked = onColorPicked
+        view.onTextAdded = onTextAdded
+        view.selectedColor = selectedColor
         return view
     }
 
@@ -1429,6 +1837,7 @@ struct AnnotationCanvasView: NSViewRepresentable {
         nsView.onDeleteSelected = onDeleteSelected
         nsView.onUndo = onUndo
         nsView.onColorPicked = onColorPicked
+        nsView.onTextAdded = onTextAdded
         nsView.needsDisplay = true
     }
 
@@ -1439,26 +1848,51 @@ struct AnnotationCanvasView: NSViewRepresentable {
     class Coordinator: NSObject, AnnotationCanvasDelegate {
         var parent: AnnotationCanvasView
         weak var canvasView: AnnotationCanvasNSView?
+        private var dragStartPoint: CGPoint?
+        private var isDraggingAnnotation = false
+        private var draggedAnnotationIndex: Int?
+        private var dragOffset: CGPoint = .zero
 
         init(_ parent: AnnotationCanvasView) {
             self.parent = parent
         }
 
         func didStartDrawing(at point: CGPoint) {
+            dragStartPoint = point
+
             // Get current tool from the NSView (which is updated by SwiftUI)
             let currentTool = canvasView?.selectedTool ?? parent.selectedTool
             let currentColor = canvasView?.selectedColor ?? parent.selectedColor
             let currentStrokeWidth = canvasView?.strokeWidth ?? parent.strokeWidth
 
             if currentTool == .text {
-                parent.textPosition = point
-                parent.isAddingText = true
+                // Start inline text editing
+                canvasView?.startTextEditing(at: point, color: currentColor)
             } else if currentTool == .select {
                 // Selection mode - check if clicking on an annotation
+                // First check if clicking on already selected annotation to start dragging
+                if let selectedId = parent.selectedAnnotationId,
+                   let index = parent.annotations.firstIndex(where: { $0.id == selectedId }) {
+                    let annotation = parent.annotations[index]
+                    if annotationContainsPoint(annotation, point: point) {
+                        // Start dragging the selected annotation
+                        isDraggingAnnotation = true
+                        draggedAnnotationIndex = index
+                        // Calculate offset from click point to annotation's start point
+                        dragOffset = CGPoint(
+                            x: point.x - annotation.startPoint.x,
+                            y: point.y - annotation.startPoint.y
+                        )
+                        return
+                    }
+                }
+                // If not dragging, try to select an annotation at the point
                 parent.onSelectAnnotation(point)
             } else {
                 // Clear selection when starting to draw
                 parent.selectedAnnotationId = nil
+                isDraggingAnnotation = false
+                draggedAnnotationIndex = nil
 
                 var annotation = Annotation(
                     type: currentTool,
@@ -1467,32 +1901,173 @@ struct AnnotationCanvasView: NSViewRepresentable {
                     color: currentColor,
                     strokeWidth: currentStrokeWidth
                 )
-                // For freehand, start with the first point
-                if currentTool == .freehand {
+
+                // Set z-index for new annotation
+                annotation.zIndex = parent.annotations.count
+
+                // For freehand and erase, start with the first point
+                if currentTool == .freehand || currentTool == .erase {
                     annotation.points = [point]
                 }
+
+                // For step counter, set auto-increment step number
+                if currentTool == .stepCounter {
+                    let stepAnnotations = parent.annotations.filter { $0.type == .stepCounter }
+                    annotation.stepNumber = stepAnnotations.count + 1
+                }
+
                 parent.currentAnnotation = annotation
             }
         }
 
         func didContinueDrawing(at point: CGPoint) {
             let currentTool = canvasView?.selectedTool ?? parent.selectedTool
-            if currentTool == .freehand {
+
+            // Handle annotation dragging
+            if isDraggingAnnotation, let index = draggedAnnotationIndex {
+                moveAnnotation(at: index, to: point)
+                return
+            }
+
+            if currentTool == .freehand || currentTool == .erase {
                 parent.currentAnnotation?.points.append(point)
             }
             parent.currentAnnotation?.endPoint = point
         }
 
         func didEndDrawing(at point: CGPoint) {
+            // Finish annotation dragging
+            if isDraggingAnnotation {
+                if let index = draggedAnnotationIndex {
+                    moveAnnotation(at: index, to: point)
+                }
+                isDraggingAnnotation = false
+                draggedAnnotationIndex = nil
+                dragOffset = .zero
+                return
+            }
+
             let currentTool = canvasView?.selectedTool ?? parent.selectedTool
             if var annotation = parent.currentAnnotation {
                 annotation.endPoint = point
-                if currentTool == .freehand {
+                if currentTool == .freehand || currentTool == .erase {
                     annotation.points.append(point)
                 }
-                parent.annotations.append(annotation)
+
+                // Only add annotation if it has meaningful size (not just a click)
+                let minSize: CGFloat = 5
+                let width = abs(annotation.endPoint.x - annotation.startPoint.x)
+                let height = abs(annotation.endPoint.y - annotation.startPoint.y)
+                let hasSize = width > minSize || height > minSize
+
+                // For freehand/erase, check if there's actual movement
+                let hasFreehandMovement = (currentTool == .freehand || currentTool == .erase) && annotation.points.count > 2
+
+                if hasSize || hasFreehandMovement {
+                    parent.annotations.append(annotation)
+                }
                 parent.currentAnnotation = nil
             }
+            dragStartPoint = nil
+        }
+
+        private func moveAnnotation(at index: Int, to point: CGPoint) {
+            guard index < parent.annotations.count else { return }
+
+            var annotation = parent.annotations[index]
+            let newStartPoint = CGPoint(
+                x: point.x - dragOffset.x,
+                y: point.y - dragOffset.y
+            )
+
+            // Calculate the delta movement
+            let deltaX = newStartPoint.x - annotation.startPoint.x
+            let deltaY = newStartPoint.y - annotation.startPoint.y
+
+            // Move start and end points
+            annotation.startPoint = newStartPoint
+            annotation.endPoint = CGPoint(
+                x: annotation.endPoint.x + deltaX,
+                y: annotation.endPoint.y + deltaY
+            )
+
+            // Move freehand/erase points if applicable
+            if annotation.type == .freehand || annotation.type == .erase {
+                annotation.points = annotation.points.map { pt in
+                    CGPoint(x: pt.x + deltaX, y: pt.y + deltaY)
+                }
+            }
+
+            parent.annotations[index] = annotation
+        }
+
+        private func annotationContainsPoint(_ annotation: Annotation, point: CGPoint) -> Bool {
+            let tolerance: CGFloat = 10
+            let start = annotation.startPoint
+            let end = annotation.endPoint
+
+            switch annotation.type {
+            case .arrow, .line:
+                return pointNearLine(point: point, lineStart: start, lineEnd: end, tolerance: tolerance)
+            case .rectangle, .blur, .highlight, .pixelate:
+                let rect = CGRect(
+                    x: min(start.x, end.x) - tolerance,
+                    y: min(start.y, end.y) - tolerance,
+                    width: abs(end.x - start.x) + tolerance * 2,
+                    height: abs(end.y - start.y) + tolerance * 2
+                )
+                return rect.contains(point)
+            case .stepCounter:
+                // Step counter is a circle around the start point
+                let radius: CGFloat = max(annotation.strokeWidth * 2, 16) + tolerance
+                let distance = hypot(point.x - start.x, point.y - start.y)
+                return distance <= radius
+            case .ellipse:
+                let rect = CGRect(
+                    x: min(start.x, end.x),
+                    y: min(start.y, end.y),
+                    width: abs(end.x - start.x),
+                    height: abs(end.y - start.y)
+                )
+                return rect.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+            case .text:
+                let textRect = CGRect(x: start.x - tolerance, y: start.y - tolerance, width: 100 + tolerance * 2, height: 30 + tolerance * 2)
+                return textRect.contains(point)
+            case .callout:
+                let rect = CGRect(
+                    x: min(start.x, end.x) - tolerance,
+                    y: min(start.y, end.y) - tolerance,
+                    width: abs(end.x - start.x) + tolerance * 2,
+                    height: abs(end.y - start.y) + tolerance * 2
+                )
+                return rect.contains(point)
+            case .freehand, .erase:
+                for pathPoint in annotation.points {
+                    if abs(pathPoint.x - point.x) < tolerance && abs(pathPoint.y - point.y) < tolerance {
+                        return true
+                    }
+                }
+                return false
+            case .select:
+                return false
+            }
+        }
+
+        private func pointNearLine(point: CGPoint, lineStart: CGPoint, lineEnd: CGPoint, tolerance: CGFloat) -> Bool {
+            let dx = lineEnd.x - lineStart.x
+            let dy = lineEnd.y - lineStart.y
+            let lengthSquared = dx * dx + dy * dy
+
+            if lengthSquared == 0 {
+                return hypot(point.x - lineStart.x, point.y - lineStart.y) < tolerance
+            }
+
+            let t = max(0, min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared))
+            let nearestX = lineStart.x + t * dx
+            let nearestY = lineStart.y + t * dy
+            let distance = hypot(point.x - nearestX, point.y - nearestY)
+
+            return distance < tolerance
         }
     }
 }
@@ -1505,7 +2080,7 @@ protocol AnnotationCanvasDelegate: AnyObject {
 }
 
 // MARK: - Annotation Canvas NSView
-class AnnotationCanvasNSView: NSView {
+class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
     weak var delegate: AnnotationCanvasDelegate?
 
     var annotations: [Annotation] = []
@@ -1516,9 +2091,12 @@ class AnnotationCanvasNSView: NSView {
     var selectedAnnotationId: UUID?
     var onDeleteSelected: (() -> Void)?
     var onColorPicked: ((Color, String) -> Void)?
+    var onTextAdded: ((String, CGPoint) -> Void)?
     var sourceImage: NSImage?
 
     private var trackingArea: NSTrackingArea?
+    private var textField: NSTextField?
+    private var textEditingPosition: CGPoint?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -1551,9 +2129,129 @@ class AnnotationCanvasNSView: NSView {
         window?.makeFirstResponder(self)
     }
 
+    // MARK: - Inline Text Editing
+    func startTextEditing(at point: CGPoint, color: NSColor) {
+        // Remove existing text field if any
+        textField?.removeFromSuperview()
+
+        textEditingPosition = point
+
+        let field = NSTextField(frame: NSRect(x: point.x, y: point.y - 10, width: 200, height: 24))
+        field.font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        field.textColor = color
+        field.backgroundColor = NSColor.white.withAlphaComponent(0.9)
+        field.isBordered = true
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .none
+        field.placeholderString = "Type text..."
+        field.delegate = self
+        field.target = self
+        field.action = #selector(textFieldDidFinish(_:))
+
+        addSubview(field)
+        field.becomeFirstResponder()
+        textField = field
+    }
+
+    @objc private func textFieldDidFinish(_ sender: NSTextField) {
+        finishTextEditing()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        finishTextEditing()
+    }
+
+    private func finishTextEditing() {
+        guard let field = textField, let position = textEditingPosition else { return }
+
+        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            onTextAdded?(text, position)
+        }
+
+        field.removeFromSuperview()
+        textField = nil
+        textEditingPosition = nil
+        window?.makeFirstResponder(self)
+        needsDisplay = true
+    }
+
     override func mouseMoved(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
+
+        // Update cursor based on hover state over selected annotation
+        if selectedTool == .select, let selectedId = selectedAnnotationId,
+           let annotation = annotations.first(where: { $0.id == selectedId }) {
+            if isPointInsideAnnotation(location, annotation: annotation) {
+                NSCursor.openHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        } else {
+            NSCursor.arrow.set()
+        }
+
         pickColorAt(location)
+    }
+
+    private func isPointInsideAnnotation(_ point: CGPoint, annotation: Annotation) -> Bool {
+        let tolerance: CGFloat = 10
+        let start = annotation.startPoint
+        let end = annotation.endPoint
+
+        switch annotation.type {
+        case .arrow, .line:
+            return isPointNearLine(point: point, lineStart: start, lineEnd: end, tolerance: tolerance)
+        case .rectangle, .blur, .highlight, .callout, .pixelate:
+            let rect = CGRect(
+                x: min(start.x, end.x) - tolerance,
+                y: min(start.y, end.y) - tolerance,
+                width: abs(end.x - start.x) + tolerance * 2,
+                height: abs(end.y - start.y) + tolerance * 2
+            )
+            return rect.contains(point)
+        case .stepCounter:
+            let radius: CGFloat = max(annotation.strokeWidth * 2, 16) + tolerance
+            let distance = hypot(point.x - start.x, point.y - start.y)
+            return distance <= radius
+        case .ellipse:
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            return rect.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+        case .text:
+            let textRect = CGRect(x: start.x - tolerance, y: start.y - tolerance, width: 100 + tolerance * 2, height: 30 + tolerance * 2)
+            return textRect.contains(point)
+        case .freehand, .erase:
+            for pathPoint in annotation.points {
+                if abs(pathPoint.x - point.x) < tolerance && abs(pathPoint.y - point.y) < tolerance {
+                    return true
+                }
+            }
+            return false
+        case .select:
+            return false
+        }
+    }
+
+    private func isPointNearLine(point: CGPoint, lineStart: CGPoint, lineEnd: CGPoint, tolerance: CGFloat) -> Bool {
+        let dx = lineEnd.x - lineStart.x
+        let dy = lineEnd.y - lineStart.y
+        let lengthSquared = dx * dx + dy * dy
+
+        if lengthSquared == 0 {
+            return hypot(point.x - lineStart.x, point.y - lineStart.y) < tolerance
+        }
+
+        let t = max(0, min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared))
+        let nearestX = lineStart.x + t * dx
+        let nearestY = lineStart.y + t * dy
+        let distance = hypot(point.x - nearestX, point.y - nearestY)
+
+        return distance < tolerance
     }
 
     private func pickColorAt(_ point: CGPoint) {
@@ -1692,16 +2390,31 @@ class AnnotationCanvasNSView: NSView {
                 width: abs(end.x - start.x),
                 height: abs(end.y - start.y)
             )
-        case .rectangle, .ellipse, .blur, .highlight:
+        case .rectangle, .ellipse, .blur, .highlight, .pixelate:
             return CGRect(
                 x: min(start.x, end.x),
                 y: min(start.y, end.y),
                 width: abs(end.x - start.x),
                 height: abs(end.y - start.y)
             )
+        case .stepCounter:
+            let radius: CGFloat = max(annotation.strokeWidth * 2, 16)
+            return CGRect(
+                x: start.x - radius,
+                y: start.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
         case .text:
             return CGRect(x: start.x, y: start.y, width: 100, height: 30)
-        case .freehand:
+        case .callout:
+            return CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+        case .freehand, .erase:
             guard !annotation.points.isEmpty else {
                 return CGRect(origin: start, size: .zero)
             }
@@ -1768,16 +2481,31 @@ class AnnotationCanvasNSView: NSView {
                 string.draw(at: start)
             }
 
+        case .callout:
+            drawCallout(annotation: annotation, in: context)
+
         case .blur:
-            // Simplified blur representation (actual blur would need Core Image)
+            // Draw blur effect preview (crosshatch pattern to indicate blur)
             let rect = CGRect(
                 x: min(start.x, end.x),
                 y: min(start.y, end.y),
                 width: abs(end.x - start.x),
                 height: abs(end.y - start.y)
             )
-            context.setFillColor(NSColor.gray.withAlphaComponent(0.5).cgColor)
-            context.fill(rect)
+            drawRedactionPreview(in: context, rect: rect, style: annotation.redactionStyle, intensity: annotation.redactionIntensity)
+
+        case .pixelate:
+            // Draw pixelate effect preview (grid pattern to indicate pixelation)
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            drawRedactionPreview(in: context, rect: rect, style: .pixelate, intensity: annotation.redactionIntensity)
+
+        case .stepCounter:
+            drawStepCounter(annotation: annotation, in: context)
 
         case .highlight:
             let rect = CGRect(
@@ -1790,6 +2518,18 @@ class AnnotationCanvasNSView: NSView {
             context.fill(rect)
 
         case .freehand:
+            guard annotation.points.count > 1 else { return }
+            context.move(to: annotation.points[0])
+            for i in 1..<annotation.points.count {
+                context.addLine(to: annotation.points[i])
+            }
+            context.strokePath()
+
+        case .erase:
+            // Erase is handled differently - it removes parts of annotations
+            // For now, draw a white/background colored stroke
+            context.setStrokeColor(NSColor.white.cgColor)
+            context.setLineWidth(annotation.strokeWidth * 3) // Wider eraser
             guard annotation.points.count > 1 else { return }
             context.move(to: annotation.points[0])
             for i in 1..<annotation.points.count {
@@ -1830,8 +2570,219 @@ class AnnotationCanvasNSView: NSView {
         context.strokePath()
     }
 
+    private func drawCallout(annotation: Annotation, in context: CGContext) {
+        let start = annotation.startPoint
+        let end = annotation.endPoint
+        let text = annotation.text ?? ""
+
+        // Calculate box dimensions
+        let padding: CGFloat = 12
+        let fontSize = annotation.fontSize
+        let cornerRadius: CGFloat = 6
+        let arrowSize: CGFloat = 20
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+
+        let boxWidth = textSize.width + padding * 2
+        let boxHeight = textSize.height + padding * 2
+
+        // Box rect (excluding arrow)
+        let boxRect = CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: max(boxWidth, abs(end.x - start.x)),
+            height: max(boxHeight, abs(end.y - start.y) - arrowSize)
+        )
+
+        // Draw filled rounded rectangle
+        context.setFillColor(annotation.color.cgColor)
+        let boxPath = CGPath(roundedRect: boxRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+        context.addPath(boxPath)
+        context.fillPath()
+
+        // Draw arrow tip based on direction
+        let arrowDirection = annotation.calloutArrowDirection
+        var arrowPath = CGMutablePath()
+
+        switch arrowDirection {
+        case .bottomLeft:
+            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.maxY + arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.maxY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.maxY))
+            arrowPath.closeSubpath()
+
+        case .bottomRight:
+            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.maxY + arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.maxY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.maxY))
+            arrowPath.closeSubpath()
+
+        case .topLeft:
+            let arrowTip = CGPoint(x: boxRect.minX + 20, y: boxRect.minY - arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.minX + 10, y: boxRect.minY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.minX + 40, y: boxRect.minY))
+            arrowPath.closeSubpath()
+
+        case .topRight:
+            let arrowTip = CGPoint(x: boxRect.maxX - 20, y: boxRect.minY - arrowSize)
+            arrowPath.move(to: CGPoint(x: boxRect.maxX - 40, y: boxRect.minY))
+            arrowPath.addLine(to: arrowTip)
+            arrowPath.addLine(to: CGPoint(x: boxRect.maxX - 10, y: boxRect.minY))
+            arrowPath.closeSubpath()
+        }
+
+        context.addPath(arrowPath)
+        context.fillPath()
+
+        // Draw text
+        let textPoint = CGPoint(
+            x: boxRect.minX + padding,
+            y: boxRect.minY + padding
+        )
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        attributedString.draw(at: textPoint)
+    }
+
+    // MARK: - Step Counter Drawing
+    private func drawStepCounter(annotation: Annotation, in context: CGContext) {
+        let center = annotation.startPoint
+        let stepNumber = annotation.stepNumber ?? 1
+        let format = annotation.stepCounterFormat
+        let displayText = format.format(stepNumber)
+
+        // Calculate circle size based on text
+        let fontSize = annotation.fontSize
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
+            .foregroundColor: NSColor.white
+        ]
+        let textSize = (displayText as NSString).size(withAttributes: attributes)
+        let circleRadius = max(textSize.width, textSize.height) / 2 + 10
+
+        // Draw filled circle
+        let circleRect = CGRect(
+            x: center.x - circleRadius,
+            y: center.y - circleRadius,
+            width: circleRadius * 2,
+            height: circleRadius * 2
+        )
+
+        context.setFillColor(annotation.color.cgColor)
+        context.fillEllipse(in: circleRect)
+
+        // Draw white border
+        context.setStrokeColor(NSColor.white.cgColor)
+        context.setLineWidth(2)
+        context.strokeEllipse(in: circleRect)
+
+        // Draw number/letter
+        let textRect = CGRect(
+            x: center.x - textSize.width / 2,
+            y: center.y - textSize.height / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+        let attributedString = NSAttributedString(string: displayText, attributes: attributes)
+        attributedString.draw(in: textRect)
+    }
+
+    // MARK: - Redaction Preview Drawing
+    private func drawRedactionPreview(in context: CGContext, rect: CGRect, style: RedactionStyle, intensity: CGFloat) {
+        switch style {
+        case .blur:
+            // Draw crosshatch pattern to indicate blur
+            context.saveGState()
+            context.clip(to: rect)
+
+            // Semi-transparent fill
+            context.setFillColor(NSColor.gray.withAlphaComponent(0.4 * intensity).cgColor)
+            context.fill(rect)
+
+            // Crosshatch lines
+            context.setStrokeColor(NSColor.gray.withAlphaComponent(0.6).cgColor)
+            context.setLineWidth(1)
+
+            let spacing: CGFloat = 8
+            // Diagonal lines one direction
+            var x = rect.minX - rect.height
+            while x < rect.maxX {
+                context.move(to: CGPoint(x: x, y: rect.maxY))
+                context.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+                x += spacing
+            }
+            context.strokePath()
+
+            // Border
+            context.setStrokeColor(NSColor.systemBlue.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(2)
+            context.setLineDash(phase: 0, lengths: [4, 4])
+            context.stroke(rect)
+
+            context.restoreGState()
+
+        case .pixelate:
+            // Draw grid pattern to indicate pixelation
+            context.saveGState()
+            context.clip(to: rect)
+
+            let blockSize: CGFloat = max(8, 20 * (1 - intensity))
+
+            // Draw checkerboard-like pattern
+            var y = rect.minY
+            var rowIndex = 0
+            while y < rect.maxY {
+                var x = rect.minX
+                var colIndex = rowIndex % 2
+                while x < rect.maxX {
+                    let blockRect = CGRect(x: x, y: y, width: blockSize, height: blockSize)
+                    let shade = colIndex % 2 == 0 ? 0.3 : 0.5
+                    context.setFillColor(NSColor.gray.withAlphaComponent(shade * intensity).cgColor)
+                    context.fill(blockRect)
+                    x += blockSize
+                    colIndex += 1
+                }
+                y += blockSize
+                rowIndex += 1
+            }
+
+            // Border
+            context.setStrokeColor(NSColor.systemOrange.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(2)
+            context.setLineDash(phase: 0, lengths: [4, 4])
+            context.stroke(rect)
+
+            context.restoreGState()
+
+        case .solidBlack:
+            context.setFillColor(NSColor.black.cgColor)
+            context.fill(rect)
+
+        case .solidWhite:
+            context.setFillColor(NSColor.white.cgColor)
+            context.fill(rect)
+            context.setStrokeColor(NSColor.gray.cgColor)
+            context.setLineWidth(1)
+            context.stroke(rect)
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
+
+        // Show closed hand cursor if clicking on selected annotation
+        if selectedTool == .select, let selectedId = selectedAnnotationId,
+           let annotation = annotations.first(where: { $0.id == selectedId }),
+           isPointInsideAnnotation(location, annotation: annotation) {
+            NSCursor.closedHand.set()
+        }
+
         delegate?.didStartDrawing(at: location)
     }
 
@@ -1844,6 +2795,12 @@ class AnnotationCanvasNSView: NSView {
     override func mouseUp(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
         delegate?.didEndDrawing(at: location)
+
+        // Reset cursor after drag
+        if selectedTool == .select {
+            NSCursor.arrow.set()
+        }
+
         needsDisplay = true
     }
 }
@@ -1852,6 +2809,15 @@ class AnnotationCanvasNSView: NSView {
 enum BackdropType: String, CaseIterable {
     case solid = "Solid"
     case gradient = "Gradient"
+    case transparent = "Transparent"
+
+    var icon: String {
+        switch self {
+        case .solid: return "square.fill"
+        case .gradient: return "circle.lefthalf.filled"
+        case .transparent: return "checkerboard.rectangle"
+        }
+    }
 }
 
 enum GradientDirection: String, CaseIterable {
@@ -1991,13 +2957,32 @@ extension Color {
     }
 }
 
-#Preview {
-    AnnotationEditorView(
-        screenshot: Screenshot(
-            image: NSImage(systemSymbolName: "photo", accessibilityDescription: nil)!,
-            captureType: .area
-        ),
-        onSave: { _ in },
-        onCancel: {}
-    )
+// MARK: - Checkerboard Pattern (for transparent preview)
+struct CheckerboardPattern: View {
+    let squareSize: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geometry in
+            Canvas { context, size in
+                let rows = Int(ceil(size.height / squareSize))
+                let cols = Int(ceil(size.width / squareSize))
+
+                for row in 0..<rows {
+                    for col in 0..<cols {
+                        let isLight = (row + col) % 2 == 0
+                        let rect = CGRect(
+                            x: CGFloat(col) * squareSize,
+                            y: CGFloat(row) * squareSize,
+                            width: squareSize,
+                            height: squareSize
+                        )
+                        context.fill(
+                            Path(rect),
+                            with: .color(isLight ? Color(white: 0.9) : Color(white: 0.7))
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
