@@ -84,9 +84,13 @@ DodoShot is a lightweight, native macOS screenshot application built with SwiftU
 - Customizable backdrop behind screenshots in editor
 
 ### AI-powered (optional)
-- OCR text extraction
-- Smart image descriptions
-- Supports Anthropic and OpenAI providers
+- OCR text extraction using Apple's Vision framework (no API key required)
+- AI image descriptions (requires Anthropic or OpenAI API key in settings)
+
+### Privacy
+- **No telemetry or analytics** — Your data stays on your device
+- No network requests except for optional AI features (when API key is configured)
+- Screenshots are stored locally only
 
 ### Design
 - Native macOS look and feel
