@@ -331,9 +331,121 @@ struct TextAnnotationSettings: Codable, Equatable {
 
 /// App settings model
 struct AppSettings: Codable {
-    var llmApiKey: String
+    var anthropicApiKey: String
+    var openaiApiKey: String
     var llmProvider: LLMProvider
+
+    // Computed property for current provider's API key (not encoded)
+    var llmApiKey: String {
+        get {
+            switch llmProvider {
+            case .anthropic: return anthropicApiKey
+            case .openai: return openaiApiKey
+            }
+        }
+        set {
+            switch llmProvider {
+            case .anthropic: anthropicApiKey = newValue
+            case .openai: openaiApiKey = newValue
+            }
+        }
+    }
     var saveLocation: String
+
+    // Custom CodingKeys - exclude llmApiKey as it's computed
+    enum CodingKeys: String, CodingKey {
+        case anthropicApiKey, openaiApiKey, llmProvider, saveLocation, autoCopyToClipboard
+        case showQuickOverlay, quickOverlayAutoDismiss, quickOverlayTimeout, hideDesktopIcons
+        case hotkeys, appearanceMode, launchAtStartup, imageFormat, jpgQuality, webpQuality
+        case defaultAnnotationColor, defaultStrokeWidth, defaultAnnotationTool
+        case textAnnotationSettings, filenameTemplate, sequentialNumber
+        case autoSaveOnEditorClose, autoCopyOnEditorClose, maxVideoRecordingDuration
+        case defaultRedactionStyle, defaultRedactionIntensity, defaultStepCounterFormat
+        // Legacy key for backward compatibility
+        case llmApiKey
+    }
+
+    // Custom decoder for backward compatibility with old settings
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Handle API keys - check for new format first, fall back to legacy
+        if let anthropic = try container.decodeIfPresent(String.self, forKey: .anthropicApiKey) {
+            anthropicApiKey = anthropic
+            openaiApiKey = try container.decodeIfPresent(String.self, forKey: .openaiApiKey) ?? ""
+        } else if let legacyKey = try container.decodeIfPresent(String.self, forKey: .llmApiKey) {
+            // Migrate legacy key to the current provider
+            let provider = try container.decodeIfPresent(LLMProvider.self, forKey: .llmProvider) ?? .anthropic
+            if provider == .anthropic {
+                anthropicApiKey = legacyKey
+                openaiApiKey = ""
+            } else {
+                anthropicApiKey = ""
+                openaiApiKey = legacyKey
+            }
+        } else {
+            anthropicApiKey = ""
+            openaiApiKey = ""
+        }
+
+        llmProvider = try container.decodeIfPresent(LLMProvider.self, forKey: .llmProvider) ?? .anthropic
+        saveLocation = try container.decode(String.self, forKey: .saveLocation)
+        autoCopyToClipboard = try container.decode(Bool.self, forKey: .autoCopyToClipboard)
+        showQuickOverlay = try container.decode(Bool.self, forKey: .showQuickOverlay)
+        quickOverlayAutoDismiss = try container.decodeIfPresent(Bool.self, forKey: .quickOverlayAutoDismiss) ?? true
+        quickOverlayTimeout = try container.decodeIfPresent(Double.self, forKey: .quickOverlayTimeout) ?? 5.0
+        hideDesktopIcons = try container.decode(Bool.self, forKey: .hideDesktopIcons)
+        hotkeys = try container.decode(HotkeySettings.self, forKey: .hotkeys)
+        appearanceMode = try container.decode(AppearanceMode.self, forKey: .appearanceMode)
+        launchAtStartup = try container.decode(Bool.self, forKey: .launchAtStartup)
+        imageFormat = try container.decodeIfPresent(ImageFormat.self, forKey: .imageFormat) ?? .auto
+        jpgQuality = try container.decodeIfPresent(Double.self, forKey: .jpgQuality) ?? 0.8
+        webpQuality = try container.decodeIfPresent(Double.self, forKey: .webpQuality) ?? 0.8
+        defaultAnnotationColor = try container.decodeIfPresent(String.self, forKey: .defaultAnnotationColor) ?? "red"
+        defaultStrokeWidth = try container.decodeIfPresent(Double.self, forKey: .defaultStrokeWidth) ?? 3.0
+        defaultAnnotationTool = try container.decodeIfPresent(String.self, forKey: .defaultAnnotationTool) ?? "arrow"
+        textAnnotationSettings = try container.decodeIfPresent(TextAnnotationSettings.self, forKey: .textAnnotationSettings) ?? .default
+        filenameTemplate = try container.decodeIfPresent(String.self, forKey: .filenameTemplate) ?? "DodoShot_{date}_{time}"
+        sequentialNumber = try container.decodeIfPresent(Int.self, forKey: .sequentialNumber) ?? 1
+        autoSaveOnEditorClose = try container.decodeIfPresent(Bool.self, forKey: .autoSaveOnEditorClose) ?? false
+        autoCopyOnEditorClose = try container.decodeIfPresent(Bool.self, forKey: .autoCopyOnEditorClose) ?? true
+        maxVideoRecordingDuration = try container.decodeIfPresent(Int.self, forKey: .maxVideoRecordingDuration) ?? 20
+        defaultRedactionStyle = try container.decodeIfPresent(RedactionStyle.self, forKey: .defaultRedactionStyle) ?? .blur
+        defaultRedactionIntensity = try container.decodeIfPresent(Double.self, forKey: .defaultRedactionIntensity) ?? 0.7
+        defaultStepCounterFormat = try container.decodeIfPresent(StepCounterFormat.self, forKey: .defaultStepCounterFormat) ?? .numeric
+    }
+
+    // Custom encoder - don't encode the computed llmApiKey
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(anthropicApiKey, forKey: .anthropicApiKey)
+        try container.encode(openaiApiKey, forKey: .openaiApiKey)
+        try container.encode(llmProvider, forKey: .llmProvider)
+        try container.encode(saveLocation, forKey: .saveLocation)
+        try container.encode(autoCopyToClipboard, forKey: .autoCopyToClipboard)
+        try container.encode(showQuickOverlay, forKey: .showQuickOverlay)
+        try container.encode(quickOverlayAutoDismiss, forKey: .quickOverlayAutoDismiss)
+        try container.encode(quickOverlayTimeout, forKey: .quickOverlayTimeout)
+        try container.encode(hideDesktopIcons, forKey: .hideDesktopIcons)
+        try container.encode(hotkeys, forKey: .hotkeys)
+        try container.encode(appearanceMode, forKey: .appearanceMode)
+        try container.encode(launchAtStartup, forKey: .launchAtStartup)
+        try container.encode(imageFormat, forKey: .imageFormat)
+        try container.encode(jpgQuality, forKey: .jpgQuality)
+        try container.encode(webpQuality, forKey: .webpQuality)
+        try container.encode(defaultAnnotationColor, forKey: .defaultAnnotationColor)
+        try container.encode(defaultStrokeWidth, forKey: .defaultStrokeWidth)
+        try container.encode(defaultAnnotationTool, forKey: .defaultAnnotationTool)
+        try container.encode(textAnnotationSettings, forKey: .textAnnotationSettings)
+        try container.encode(filenameTemplate, forKey: .filenameTemplate)
+        try container.encode(sequentialNumber, forKey: .sequentialNumber)
+        try container.encode(autoSaveOnEditorClose, forKey: .autoSaveOnEditorClose)
+        try container.encode(autoCopyOnEditorClose, forKey: .autoCopyOnEditorClose)
+        try container.encode(maxVideoRecordingDuration, forKey: .maxVideoRecordingDuration)
+        try container.encode(defaultRedactionStyle, forKey: .defaultRedactionStyle)
+        try container.encode(defaultRedactionIntensity, forKey: .defaultRedactionIntensity)
+        try container.encode(defaultStepCounterFormat, forKey: .defaultStepCounterFormat)
+    }
     var autoCopyToClipboard: Bool
     var showQuickOverlay: Bool
     var quickOverlayAutoDismiss: Bool  // Auto-dismiss overlay after timeout
@@ -358,12 +470,72 @@ struct AppSettings: Codable {
     var defaultRedactionIntensity: Double
     var defaultStepCounterFormat: StepCounterFormat
 
+    // Memberwise init (needed because we have custom Codable)
+    init(
+        anthropicApiKey: String,
+        openaiApiKey: String,
+        llmProvider: LLMProvider,
+        saveLocation: String,
+        autoCopyToClipboard: Bool,
+        showQuickOverlay: Bool,
+        quickOverlayAutoDismiss: Bool,
+        quickOverlayTimeout: Double,
+        hideDesktopIcons: Bool,
+        hotkeys: HotkeySettings,
+        appearanceMode: AppearanceMode,
+        launchAtStartup: Bool,
+        imageFormat: ImageFormat,
+        jpgQuality: Double,
+        webpQuality: Double,
+        defaultAnnotationColor: String,
+        defaultStrokeWidth: Double,
+        defaultAnnotationTool: String,
+        textAnnotationSettings: TextAnnotationSettings,
+        filenameTemplate: String,
+        sequentialNumber: Int,
+        autoSaveOnEditorClose: Bool,
+        autoCopyOnEditorClose: Bool,
+        maxVideoRecordingDuration: Int,
+        defaultRedactionStyle: RedactionStyle,
+        defaultRedactionIntensity: Double,
+        defaultStepCounterFormat: StepCounterFormat
+    ) {
+        self.anthropicApiKey = anthropicApiKey
+        self.openaiApiKey = openaiApiKey
+        self.llmProvider = llmProvider
+        self.saveLocation = saveLocation
+        self.autoCopyToClipboard = autoCopyToClipboard
+        self.showQuickOverlay = showQuickOverlay
+        self.quickOverlayAutoDismiss = quickOverlayAutoDismiss
+        self.quickOverlayTimeout = quickOverlayTimeout
+        self.hideDesktopIcons = hideDesktopIcons
+        self.hotkeys = hotkeys
+        self.appearanceMode = appearanceMode
+        self.launchAtStartup = launchAtStartup
+        self.imageFormat = imageFormat
+        self.jpgQuality = jpgQuality
+        self.webpQuality = webpQuality
+        self.defaultAnnotationColor = defaultAnnotationColor
+        self.defaultStrokeWidth = defaultStrokeWidth
+        self.defaultAnnotationTool = defaultAnnotationTool
+        self.textAnnotationSettings = textAnnotationSettings
+        self.filenameTemplate = filenameTemplate
+        self.sequentialNumber = sequentialNumber
+        self.autoSaveOnEditorClose = autoSaveOnEditorClose
+        self.autoCopyOnEditorClose = autoCopyOnEditorClose
+        self.maxVideoRecordingDuration = maxVideoRecordingDuration
+        self.defaultRedactionStyle = defaultRedactionStyle
+        self.defaultRedactionIntensity = defaultRedactionIntensity
+        self.defaultStepCounterFormat = defaultStepCounterFormat
+    }
+
     static var `default`: AppSettings {
         let desktopPath = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path ?? "~/Desktop"
         let screenshotsPath = (desktopPath as NSString).appendingPathComponent("Screenshots")
 
         return AppSettings(
-            llmApiKey: "",
+            anthropicApiKey: "",
+            openaiApiKey: "",
             llmProvider: .anthropic,
             saveLocation: screenshotsPath,
             autoCopyToClipboard: true,

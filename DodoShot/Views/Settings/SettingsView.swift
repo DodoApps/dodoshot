@@ -773,7 +773,7 @@ struct AboutTab: View {
         VStack(spacing: 24) {
             Spacer()
 
-            // App icon with glow
+            // App icon - use the actual app icon
             ZStack {
                 // Glow effect
                 Circle()
@@ -781,30 +781,38 @@ struct AboutTab: View {
                         RadialGradient(
                             colors: [Color.purple.opacity(0.3), Color.blue.opacity(0.1), Color.clear],
                             center: .center,
-                            startRadius: 20,
-                            endRadius: 60
+                            startRadius: 30,
+                            endRadius: 70
                         )
                     )
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 10)
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 15)
 
-                Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // App icon from bundle
+                if let appIcon = NSImage(named: NSImage.applicationIconName) {
+                    Image(nsImage: appIcon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 96, height: 96)
+                } else {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 48, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.purple, .blue],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
+                }
             }
 
             // App name and version
             VStack(spacing: 6) {
                 Text("DodoShot")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
 
-                Text(L10n.Settings.version("1.0.0"))
+                Text(L10n.Settings.version("1.2.1"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
@@ -860,17 +868,17 @@ struct AboutTab: View {
 
             Spacer()
 
-            // Footer
-            Text(L10n.Settings.madeWith)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary.opacity(0.6))
+            // Footer - Made by Dr. Gorkem Cetin
+            Text("Made by Dr. Gorkem Cetin")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(20)
     }
 
     private func openGitHub() {
-        if let url = URL(string: "https://github.com") {
+        if let url = URL(string: "https://github.com/bluewave-labs/DodoShot") {
             NSWorkspace.shared.open(url)
         }
     }

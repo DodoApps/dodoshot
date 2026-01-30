@@ -177,7 +177,15 @@ class ScreenCaptureService: ObservableObject {
             return
         }
 
-        showWindowPicker(windows: windows)
+        // Auto-capture the frontmost window (first in the list, excluding DodoShot itself)
+        if let frontmostWindow = windows.first(where: { $0.ownerName != "DodoShot" }) {
+            captureWindow(frontmostWindow)
+        } else if let firstWindow = windows.first {
+            // Fallback to first window if all are DodoShot windows
+            captureWindow(firstWindow)
+        } else {
+            isCapturing = false
+        }
     }
 
     private func showWindowPicker(windows: [WindowInfo]) {
