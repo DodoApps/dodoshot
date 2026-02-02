@@ -433,7 +433,7 @@ struct HistoryGridItem: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.primary)
 
-                Text("\(Int(screenshot.image.size.width))×\(Int(screenshot.image.size.height))")
+                Text("\(Int(screenshot.imageSize.width))×\(Int(screenshot.imageSize.height))")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.secondary)
             }
@@ -521,7 +521,7 @@ struct HistoryListItem: View {
                         .foregroundColor(.primary)
                 }
 
-                Text("\(Int(screenshot.image.size.width))×\(Int(screenshot.image.size.height)) • \(formatFileSize(screenshot.image))")
+                Text("\(Int(screenshot.imageSize.width))×\(Int(screenshot.imageSize.height)) • \(formatFileSize(screenshot.image))")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }

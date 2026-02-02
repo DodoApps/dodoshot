@@ -44,13 +44,19 @@ struct WindowInfo: Identifiable {
 
         let myBundleID = Bundle.main.bundleIdentifier
 
+        // System processes to exclude from window capture
+        let excludedOwners = ["Dock", "Window Server", "SystemUIServer", "Spotlight"]
+        let excludedBundleIDs = ["com.apple.dock", "com.apple.WindowServer", "com.apple.systemuiserver", "com.apple.Spotlight"]
+
         return windowList.compactMap { WindowInfo(from: $0) }
             .filter { window in
-                // Filter out small windows and our own app
+                // Filter out small windows, our own app, and system processes
                 window.frame.width > 100 &&
                 window.frame.height > 100 &&
                 window.bundleIdentifier != myBundleID &&
-                window.ownerName != nil
+                window.ownerName != nil &&
+                !excludedOwners.contains(window.ownerName ?? "") &&
+                !excludedBundleIDs.contains(window.bundleIdentifier ?? "")
             }
     }
 }

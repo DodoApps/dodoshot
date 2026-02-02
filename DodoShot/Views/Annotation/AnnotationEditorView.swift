@@ -1,65 +1,209 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Editor Window Delegate
+// Handles window close button clicks to properly clean up
+class EditorWindowDelegate: NSObject, NSWindowDelegate {
+    let screenshotId: UUID
+    weak var controller: AnnotationEditorWindowController?
+
+    init(screenshotId: UUID, controller: AnnotationEditorWindowController) {
+        self.screenshotId = screenshotId
+        self.controller = controller
+        super.init()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Clean up when window is closed (via X button or programmatically)
+        controller?.windowDidClose(for: screenshotId)
+    }
+}
+
 // MARK: - Annotation Editor Window Controller
+// COMPLETELY REWRITTEN: Uses a fresh window each time, no window reuse
 class AnnotationEditorWindowController {
     static let shared = AnnotationEditorWindowController()
 
-    private var window: NSWindow?
-    private var onSaveCallback: ((Screenshot) -> Void)?
+    // Track all open windows - don't reuse, just create new ones
+    private var openWindows: [UUID: NSWindow] = [:]
+    // Keep strong references to delegates so they don't get deallocated
+    private var windowDelegates: [UUID: EditorWindowDelegate] = [:]
 
     private init() {}
 
     func showEditor(for screenshot: Screenshot, onSave: @escaping (Screenshot) -> Void) {
-        // Close existing window if any
-        window?.close()
-        onSaveCallback = onSave
+        // Copy all data we need as local variables - no references to screenshot after this
+        let screenshotId = screenshot.id
+        let pngDataCopy = Data(screenshot.pngData)  // Force a copy
+        let imageSizeCopy = screenshot.imageSize
+        let capturedAtCopy = screenshot.capturedAt
+        let captureTypeCopy = screenshot.captureType
+        let annotationsCopy = screenshot.annotations
+        let extractedTextCopy = screenshot.extractedText
+        let aiDescriptionCopy = screenshot.aiDescription
 
+        // Close any existing windows first
+        for (windowId, existingWindow) in openWindows {
+            existingWindow.delegate = nil  // Remove delegate first
+            existingWindow.contentView = nil
+            existingWindow.close()
+            windowDelegates.removeValue(forKey: windowId)
+        }
+        openWindows.removeAll()
+
+        // Create the editor view with copied data
         let editorView = AnnotationEditorView(
-            screenshot: screenshot,
+            screenshotId: screenshotId,
+            imageData: pngDataCopy,
+            imageSize: imageSizeCopy,
+            capturedAt: capturedAtCopy,
+            captureType: captureTypeCopy,
+            annotations: annotationsCopy,
+            extractedText: extractedTextCopy,
+            aiDescription: aiDescriptionCopy,
             onSave: { [weak self] updatedScreenshot in
-                self?.onSaveCallback?(updatedScreenshot)
-                self?.closeEditor()
+                onSave(updatedScreenshot)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self?.closeEditor(for: screenshotId)
+                }
             },
             onCancel: { [weak self] in
-                self?.closeEditor()
+                self?.closeEditor(for: screenshotId)
             }
         )
 
-        let window = NSWindow(
+        // Create a completely new window
+        let newWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1400, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
 
-        window.title = "DodoShot - Edit screenshot"
-        window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
-        window.backgroundColor = NSColor.windowBackgroundColor
-        window.minSize = NSSize(width: 1300, height: 700)
-        window.level = .normal  // Regular window level, not floating
-        window.collectionBehavior = [.managed, .participatesInCycle]  // Show in cmd-tab
-        window.center()
+        newWindow.title = "DodoShot - Edit screenshot"
+        newWindow.titlebarAppearsTransparent = false
+        newWindow.titleVisibility = .visible
+        newWindow.backgroundColor = NSColor.windowBackgroundColor
+        newWindow.minSize = NSSize(width: 1300, height: 700)
+        newWindow.level = .normal
+        newWindow.collectionBehavior = [.managed, .participatesInCycle]
+        newWindow.isReleasedWhenClosed = false
+        newWindow.center()
 
-        window.contentView = NSHostingView(rootView: editorView)
-        window.makeKeyAndOrderFront(nil)
+        // Set up delegate to handle window close button
+        let delegate = EditorWindowDelegate(screenshotId: screenshotId, controller: self)
+        newWindow.delegate = delegate
+        windowDelegates[screenshotId] = delegate
+
+        newWindow.contentView = NSHostingView(rootView: editorView)
+        newWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        self.window = window
+        openWindows[screenshotId] = newWindow
+    }
+
+    // Called by delegate when window closes
+    func windowDidClose(for screenshotId: UUID) {
+        openWindows.removeValue(forKey: screenshotId)
+        windowDelegates.removeValue(forKey: screenshotId)
+    }
+
+    func closeEditor(for screenshotId: UUID) {
+        guard let windowToClose = openWindows.removeValue(forKey: screenshotId) else { return }
+        windowToClose.delegate = nil  // Remove delegate before closing
+        windowDelegates.removeValue(forKey: screenshotId)
+        windowToClose.contentView = nil
+        windowToClose.close()
     }
 
     func closeEditor() {
-        window?.close()
-        window = nil
-        onSaveCallback = nil
+        // Close all windows
+        for (_, window) in openWindows {
+            window.delegate = nil
+            window.contentView = nil
+            window.close()
+        }
+        openWindows.removeAll()
+        windowDelegates.removeAll()
     }
 }
 
 struct AnnotationEditorView: View {
-    @State var screenshot: Screenshot
+    // All data is passed as simple value types - no Screenshot struct
+    let screenshotId: UUID
+    let screenshotCapturedAt: Date
+    let screenshotCaptureType: CaptureType
+    let screenshotImageSize: CGSize
+    let screenshotExtractedText: String?
+    let screenshotAiDescription: String?
+
+    // Image stored as Data - completely independent bytes
+    @State private var imageData: Data
+
     let onSave: (Screenshot) -> Void
     let onCancel: () -> Void
+
+    // Computed property creates fresh NSImage each time
+    private var displayImage: NSImage {
+        NSImage(data: imageData) ?? NSImage(size: NSSize(width: 1, height: 1))
+    }
+
+    // New initializer that takes raw data directly - no Screenshot parameter
+    init(
+        screenshotId: UUID,
+        imageData: Data,
+        imageSize: CGSize,
+        capturedAt: Date,
+        captureType: CaptureType,
+        annotations: [Annotation],
+        extractedText: String?,
+        aiDescription: String?,
+        onSave: @escaping (Screenshot) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.screenshotId = screenshotId
+        self.screenshotCapturedAt = capturedAt
+        self.screenshotCaptureType = captureType
+        self.screenshotImageSize = imageSize
+        self.screenshotExtractedText = extractedText
+        self.screenshotAiDescription = aiDescription
+        self.onSave = onSave
+        self.onCancel = onCancel
+
+        // Store the PNG data directly - it's already independent bytes
+        _imageData = State(initialValue: imageData)
+        _annotations = State(initialValue: annotations)
+    }
+
+    // Keep old initializer for compatibility but convert to new format
+    init(screenshot: Screenshot, onSave: @escaping (Screenshot) -> Void, onCancel: @escaping () -> Void) {
+        self.init(
+            screenshotId: screenshot.id,
+            imageData: Data(screenshot.pngData),  // Force copy
+            imageSize: screenshot.imageSize,
+            capturedAt: screenshot.capturedAt,
+            captureType: screenshot.captureType,
+            annotations: screenshot.annotations,
+            extractedText: screenshot.extractedText,
+            aiDescription: screenshot.aiDescription,
+            onSave: onSave,
+            onCancel: onCancel
+        )
+    }
+
+    // Reconstruct Screenshot when saving - use PNG data directly
+    private func createScreenshot() -> Screenshot {
+        return Screenshot(
+            id: screenshotId,
+            pngData: imageData,
+            imageSize: screenshotImageSize,
+            capturedAt: screenshotCapturedAt,
+            captureType: screenshotCaptureType,
+            annotations: annotations,
+            extractedText: screenshotExtractedText,
+            aiDescription: screenshotAiDescription
+        )
+    }
 
     @State private var selectedTool: AnnotationType = .arrow
     @State private var selectedColor: Color = .red
@@ -69,7 +213,7 @@ struct AnnotationEditorView: View {
     @State private var textPosition: CGPoint = .zero
     @State private var isColorPickerHovered = false
     @State private var actualImageSize: CGSize = .zero
-    @State private var annotations: [Annotation] = []
+    @State private var annotations: [Annotation]
     @State private var currentAnnotation: Annotation?
     @State private var imageSize: CGSize = .zero
     @State private var zoom: CGFloat = 1.0
@@ -77,6 +221,11 @@ struct AnnotationEditorView: View {
     @State private var isPerformingOCR = false
     @State private var ocrResult: String? = nil
     @State private var showOCRResult = false
+
+    // HUD feedback state
+    @State private var showCopiedHUD = false
+    @State private var showSavedHUD = false
+    @State private var hudMessage: String = ""
 
     // Color picker state
     @State private var hoveredColor: Color? = nil
@@ -266,6 +415,9 @@ struct AnnotationEditorView: View {
                     CanvasBackground()
 
                     GeometryReader { geometry in
+                        let availableWidth = geometry.size.width - 48
+                        let availableHeight = geometry.size.height - 48
+
                         ScrollView([.horizontal, .vertical], showsIndicators: true) {
                             ZStack {
                                 // Backdrop (if enabled)
@@ -274,11 +426,11 @@ struct AnnotationEditorView: View {
                                 }
 
                                 // Screenshot image with backdrop styling
-                                screenshotImageView
+                                screenshotImageView(maxWidth: availableWidth, maxHeight: availableHeight)
                             }
                             .frame(
-                                minWidth: geometry.size.width - 48,
-                                minHeight: geometry.size.height - 48
+                                minWidth: availableWidth,
+                                minHeight: availableHeight
                             )
                         }
                     }
@@ -292,6 +444,15 @@ struct AnnotationEditorView: View {
                     Group {
                         if showOCRResult, let result = ocrResult {
                             ocrResultOverlay(result: result)
+                        }
+                    }
+                )
+                .overlay(
+                    // HUD feedback for copy/save actions
+                    Group {
+                        if showCopiedHUD || showSavedHUD {
+                            hudOverlay
+                                .transition(.scale.combined(with: .opacity))
                         }
                     }
                 )
@@ -314,12 +475,33 @@ struct AnnotationEditorView: View {
     }
 
     // MARK: - Screenshot Image View
-    private var screenshotImageView: some View {
+    @ViewBuilder
+    private func screenshotImageView(maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+        // Calculate the fitted size while maintaining aspect ratio
+        let imageOriginalSize = displayImage.size
+        let imageAspect = imageOriginalSize.width / imageOriginalSize.height
+        let containerAspect = maxWidth / maxHeight
+
+        let fittedSize: CGSize = {
+            if imageAspect > containerAspect {
+                // Image is wider, constrain by width
+                let width = min(imageOriginalSize.width, maxWidth)
+                let height = width / imageAspect
+                return CGSize(width: width, height: height)
+            } else {
+                // Image is taller, constrain by height
+                let height = min(imageOriginalSize.height, maxHeight)
+                let width = height * imageAspect
+                return CGSize(width: width, height: height)
+            }
+        }()
+
         // Group image and annotations together so they scale together
         ZStack {
-            Image(nsImage: screenshot.image)
+            Image(nsImage: displayImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .frame(width: fittedSize.width, height: fittedSize.height)
                 .background(
                     GeometryReader { imageGeometry in
                         Color.clear
@@ -380,7 +562,7 @@ struct AnnotationEditorView: View {
     private var backdropView: some View {
         GeometryReader { geometry in
             let padding: CGFloat = 40
-            let imageAspect = screenshot.image.size.width / screenshot.image.size.height
+            let imageAspect = displayImage.size.width / displayImage.size.height
             let containerAspect = geometry.size.width / geometry.size.height
 
             let fittedSize: CGSize = {
@@ -640,6 +822,37 @@ struct AnnotationEditorView: View {
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .animation(.spring(response: 0.3), value: showOCRResult)
+    }
+
+    // MARK: - HUD Overlay for Copy/Save Feedback
+    private var hudOverlay: some View {
+        VStack {
+            Spacer()
+
+            HStack(spacing: 12) {
+                Image(systemName: showCopiedHUD ? "doc.on.clipboard.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(showCopiedHUD ? .blue : .green)
+
+                Text(hudMessage)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .shadow(color: .black.opacity(0.25), radius: 15, y: 5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            )
+
+            Spacer()
+        }
+        .animation(.spring(response: 0.3), value: showCopiedHUD)
+        .animation(.spring(response: 0.3), value: showSavedHUD)
     }
 
     // MARK: - Toolbar
@@ -1055,12 +1268,25 @@ struct AnnotationEditorView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([finalImage])
+
+        // Show HUD feedback
+        withAnimation(.spring(response: 0.3)) {
+            hudMessage = "Copied to clipboard"
+            showCopiedHUD = true
+        }
+
+        // Auto-hide after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation(.spring(response: 0.3)) {
+                showCopiedHUD = false
+            }
+        }
     }
 
     private func performOCR() {
         isPerformingOCR = true
 
-        OCRService.shared.extractText(from: screenshot.image) { [self] result in
+        OCRService.shared.extractText(from: displayImage) { [self] result in
             isPerformingOCR = false
 
             switch result {
@@ -1096,22 +1322,47 @@ struct AnnotationEditorView: View {
 
     private func saveImage() {
         let finalImage = renderAnnotatedImage()
-        // Create a new screenshot with the rendered image including annotations
+
+        // Create a completely independent copy by going through PNG data
+        guard let tiffData = finalImage.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            print("Failed to create PNG data")
+            return
+        }
+
+        // Create a new screenshot using PNG data directly
         let updatedScreenshot = Screenshot(
-            id: screenshot.id,
-            image: finalImage,
-            capturedAt: screenshot.capturedAt,
-            captureType: screenshot.captureType,
+            id: screenshotId,
+            pngData: pngData,
+            imageSize: screenshotImageSize,
+            capturedAt: screenshotCapturedAt,
+            captureType: screenshotCaptureType,
             annotations: annotations,
-            extractedText: screenshot.extractedText,
-            aiDescription: screenshot.aiDescription
+            extractedText: screenshotExtractedText,
+            aiDescription: screenshotAiDescription
         )
-        onSave(updatedScreenshot)
+
+        // Save the file directly without closing the window
+        ScreenCaptureService.shared.saveToFile(updatedScreenshot)
+
+        // Show HUD feedback
+        withAnimation(.spring(response: 0.3)) {
+            hudMessage = "Saved"
+            showSavedHUD = true
+        }
+
+        // Auto-hide after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation(.spring(response: 0.3)) {
+                showSavedHUD = false
+            }
+        }
     }
 
     private func saveProject() {
         // Update screenshot with current annotations
-        var projectScreenshot = screenshot
+        var projectScreenshot = createScreenshot()
         projectScreenshot.annotations = annotations
 
         do {
@@ -1148,7 +1399,7 @@ struct AnnotationEditorView: View {
     }
 
     private func renderAnnotatedImage() -> NSImage {
-        let originalImage = screenshot.image
+        let originalImage = displayImage
         let imageSize = originalImage.size
 
         // If backdrop is enabled, render with backdrop
@@ -1196,6 +1447,13 @@ struct AnnotationEditorView: View {
             height: imageSize.height + paddingY * 2
         )
 
+        // Scale radius values proportionally to the output image size
+        // The preview uses ~500px width, so we scale relative to that
+        let previewWidth: CGFloat = 500.0
+        let scaleFactor = imageSize.width / previewWidth
+        let scaledOuterRadius = outerRadius * scaleFactor
+        let scaledInnerRadius = innerRadius * scaleFactor
+
         let newImage = NSImage(size: backdropSize)
         newImage.lockFocus()
 
@@ -1204,9 +1462,9 @@ struct AnnotationEditorView: View {
             return originalImage
         }
 
-        // Draw backdrop
+        // Draw backdrop with scaled radius
         let backdropRect = NSRect(origin: .zero, size: backdropSize)
-        let backdropPath = NSBezierPath(roundedRect: backdropRect, xRadius: outerRadius, yRadius: outerRadius)
+        let backdropPath = NSBezierPath(roundedRect: backdropRect, xRadius: scaledOuterRadius, yRadius: scaledOuterRadius)
 
         switch backdropType {
         case .solid:
@@ -1267,13 +1525,13 @@ struct AnnotationEditorView: View {
         if shadowEnabled {
             context.saveGState()
             context.setShadow(
-                offset: CGSize(width: 0, height: -shadowOffset),
-                blur: shadowBlur,
+                offset: CGSize(width: 0, height: -shadowOffset * scaleFactor),
+                blur: shadowBlur * scaleFactor,
                 color: NSColor.black.withAlphaComponent(shadowOpacity).cgColor
             )
 
             // Draw a rounded rect for shadow
-            let shadowPath = NSBezierPath(roundedRect: imageRect, xRadius: innerRadius, yRadius: innerRadius)
+            let shadowPath = NSBezierPath(roundedRect: imageRect, xRadius: scaledInnerRadius, yRadius: scaledInnerRadius)
             NSColor.black.setFill()
             shadowPath.fill()
             context.restoreGState()
@@ -1281,7 +1539,7 @@ struct AnnotationEditorView: View {
 
         // Clip to rounded rect for the image
         context.saveGState()
-        let imagePath = NSBezierPath(roundedRect: imageRect, xRadius: innerRadius, yRadius: innerRadius)
+        let imagePath = NSBezierPath(roundedRect: imageRect, xRadius: scaledInnerRadius, yRadius: scaledInnerRadius)
         imagePath.addClip()
 
         // Draw the original image

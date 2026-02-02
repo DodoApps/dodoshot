@@ -30,7 +30,7 @@ struct PermissionOnboardingView: View {
                 completeStep
             }
         }
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: 440)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             permissionManager.startMonitoring()
@@ -158,9 +158,14 @@ struct PermissionOnboardingView: View {
             .buttonStyle(.plain)
 
             // Help text
-            Text("Enable DodoShot in Privacy & Security → Screen Recording")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            VStack(spacing: 4) {
+                Text("Enable DodoShot in Privacy & Security → Screen Recording")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text("After enabling, restart DodoShot for changes to take effect")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
 
             Spacer()
         }
@@ -197,32 +202,65 @@ struct PermissionOnboardingView: View {
 
             Spacer()
 
-            // Action button
-            Button(action: {
-                permissionManager.requestAccessibilityPermission()
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "hand.raised")
-                        .font(.system(size: 14, weight: .medium))
-                    Text("Request permission")
-                        .font(.system(size: 14, weight: .medium))
+            // Action buttons
+            VStack(spacing: 12) {
+                Button(action: {
+                    permissionManager.requestAccessibilityPermission()
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.raised")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Request permission")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.blue)
+                    )
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.blue)
-                )
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    permissionManager.openAccessibilitySettings()
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "gear")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Open system settings")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             // Help text
-            Text("A system dialog will appear to grant permission")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            VStack(spacing: 4) {
+                Text("Enable DodoShot in Accessibility settings")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text("You may need to use the '+' button to add DodoShot manually")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+            .multilineTextAlignment(.center)
 
             Spacer()
+
+            // Skip button
+            Button(action: {
+                // For debug builds, bypass the accessibility check
+                permissionManager.bypassAccessibilityForDebug()
+                onComplete()
+            }) {
+                Text("Skip for now (keyboard shortcuts won't work)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(20)
     }
@@ -320,7 +358,7 @@ class PermissionOnboardingWindowController {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 440),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -329,7 +367,20 @@ class PermissionOnboardingWindowController {
         window.title = "DodoShot"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.center()
+
+        // Position window lower on screen so it doesn't cover the OS permission modal
+        if let screen = NSScreen.main {
+            let screenFrame = screen.visibleFrame
+            let windowWidth: CGFloat = 480
+            let _ = 440 // windowHeight - window auto-sizes to content
+            // Center horizontally, position in lower third of screen
+            let x = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
+            let y = screenFrame.origin.y + screenFrame.height * 0.15 // Lower on screen
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.center()
+        }
+
         window.isReleasedWhenClosed = false
         window.level = .floating
         window.contentView = NSHostingView(rootView: onboardingView)

@@ -117,15 +117,18 @@ class QuickOverlayManager: ObservableObject {
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
+        // Screenshot stores image as Data internally, so no need for deep copies
         let contentView = CompactOverlayView(
             screenshot: item.screenshot,
             onDismiss: { [weak self] in
                 self?.dismissOverlay(id: item.id)
             },
             onExpand: { [weak self] in
-                Task { @MainActor in
-                    self?.openEditor(for: item.screenshot)
-                    self?.dismissOverlay(id: item.id)
+                // Dismiss first, then open editor
+                let screenshotToEdit = item.screenshot
+                self?.dismissOverlay(id: item.id)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    QuickOverlayManager.shared.openEditor(for: screenshotToEdit)
                 }
             },
             onHoverStart: { [weak self] in
@@ -156,6 +159,7 @@ class QuickOverlayManager: ObservableObject {
     /// Opens the full annotation editor (used when expanding from compact overlay)
     @MainActor
     func openEditor(for screenshot: Screenshot) {
+        // Screenshot stores image as Data internally, so no need for deep copies
         AnnotationEditorWindowController.shared.showEditor(for: screenshot) { updatedScreenshot in
             Task { @MainActor in
                 ScreenCaptureService.shared.saveToFile(updatedScreenshot)
@@ -167,7 +171,7 @@ class QuickOverlayManager: ObservableObject {
         guard let screen = NSScreen.main else { return }
 
         // Calculate window size based on image aspect ratio
-        let imageSize = item.screenshot.image.size
+        let imageSize = item.screenshot.imageSize
         let maxWidth: CGFloat = min(screen.visibleFrame.width * 0.85, 1200)
         let maxHeight: CGFloat = min(screen.visibleFrame.height * 0.85, 900)
 
@@ -477,22 +481,32 @@ struct CompactOverlayView: View {
     }
 
     private func saveScreenshot() {
-        ScreenCaptureService.shared.saveToFile(screenshot)
+        // Screenshot stores image as Data internally, so no deep copy needed
+        let screenshotToSave = screenshot
         onDismiss()
+        ScreenCaptureService.shared.saveToFile(screenshotToSave)
     }
 
     private func openAnnotationEditor() {
+        // Screenshot stores image as Data internally, so no deep copy needed
+        let screenshotToEdit = screenshot
         // Dismiss overlay first to avoid window ordering issues
         onDismiss()
         // Small delay to ensure overlay is dismissed before opening editor
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            AnnotationEditorWindowController.shared.showEditor(for: screenshot) { _ in }
+            AnnotationEditorWindowController.shared.showEditor(for: screenshotToEdit) { updatedScreenshot in
+                Task { @MainActor in
+                    ScreenCaptureService.shared.saveToFile(updatedScreenshot)
+                }
+            }
         }
     }
 
     private func pinScreenshot() {
-        FloatingWindowService.shared.pinScreenshot(screenshot)
+        // Screenshot stores image as Data internally, so no deep copy needed
+        let screenshotToPin = screenshot
         onDismiss()
+        FloatingWindowService.shared.pinScreenshot(screenshotToPin)
     }
 
     private func timeAgo(_ date: Date) -> String {
@@ -559,15 +573,28 @@ struct ExpandedOverlayView: View {
                     copyToClipboard()
                 }
                 ExpandedActionButton(icon: "square.and.arrow.down", label: L10n.Overlay.save, color: .green) {
-                    ScreenCaptureService.shared.saveToFile(screenshot)
+                    // Screenshot stores image as Data internally, so no deep copy needed
+                    let screenshotToSave = screenshot
                     onDismiss()
+                    ScreenCaptureService.shared.saveToFile(screenshotToSave)
                 }
                 ExpandedActionButton(icon: "pencil.tip", label: L10n.Overlay.annotate, color: .purple) {
+                    // Screenshot stores image as Data internally, so no deep copy needed
+                    let screenshotToEdit = screenshot
                     onDismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        AnnotationEditorWindowController.shared.showEditor(for: screenshotToEdit) { updatedScreenshot in
+                            Task { @MainActor in
+                                ScreenCaptureService.shared.saveToFile(updatedScreenshot)
+                            }
+                        }
+                    }
                 }
                 ExpandedActionButton(icon: "pin", label: L10n.Overlay.pin, color: .orange) {
-                    FloatingWindowService.shared.pinScreenshot(screenshot)
+                    // Screenshot stores image as Data internally, so no deep copy needed
+                    let screenshotToPin = screenshot
                     onDismiss()
+                    FloatingWindowService.shared.pinScreenshot(screenshotToPin)
                 }
             }
             .padding(.horizontal, 14)
@@ -576,7 +603,7 @@ struct ExpandedOverlayView: View {
 
             // Metadata
             HStack {
-                Label("\(Int(screenshot.image.size.width))×\(Int(screenshot.image.size.height))", systemImage: "aspectratio")
+                Label("\(Int(screenshot.imageSize.width))×\(Int(screenshot.imageSize.height))", systemImage: "aspectratio")
                 Spacer()
                 Label(formatFileSize(screenshot.image), systemImage: "doc")
             }

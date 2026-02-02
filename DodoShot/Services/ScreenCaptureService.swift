@@ -49,10 +49,200 @@ class ScreenCaptureService: ObservableObject {
         showWindowPickerForScrolling(windows: windows)
     }
 
+    /// Show the timed capture modal for selecting delay
+    func showTimedCaptureModal() {
+        guard let screen = NSScreen.main else { return }
+
+        let windowSize = NSSize(width: 280, height: 200)
+        let windowOrigin = NSPoint(
+            x: (screen.visibleFrame.width - windowSize.width) / 2 + screen.visibleFrame.origin.x,
+            y: (screen.visibleFrame.height - windowSize.height) / 2 + screen.visibleFrame.origin.y
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: windowOrigin, size: windowSize),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Timed capture"
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+
+        let modalView = TimedCaptureModalView(
+            onSelect: { [weak self] seconds in
+                window.close()
+                self?.startTimedCapture(delay: Double(seconds))
+            },
+            onCancel: {
+                window.close()
+            }
+        )
+
+        window.contentView = NSHostingView(rootView: modalView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Start a timed fullscreen capture after a delay (useful for capturing menus/dropdowns)
+    func startTimedCapture(delay: Double) {
+        isCapturing = true
+
+        // Show a countdown notification
+        showTimedCaptureCountdown(seconds: Int(delay))
+
+        // Capture after the delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.captureFullscreen()
+        }
+    }
+
+    private func showTimedCaptureCountdown(seconds: Int) {
+        // Show a small floating countdown window
+        guard let screen = NSScreen.main else { return }
+
+        let windowSize = NSSize(width: 120, height: 120)
+        let windowOrigin = NSPoint(
+            x: (screen.visibleFrame.width - windowSize.width) / 2 + screen.visibleFrame.origin.x,
+            y: (screen.visibleFrame.height - windowSize.height) / 2 + screen.visibleFrame.origin.y
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: windowOrigin, size: windowSize),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.level = .floating
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let countdownView = TimedCaptureCountdownView(seconds: seconds) {
+            window.close()
+        }
+
+        window.contentView = NSHostingView(rootView: countdownView)
+        window.orderFront(nil)
+    }
+
     func copyToClipboard(_ screenshot: Screenshot) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([screenshot.image])
+    }
+
+    /// Start OCR capture - select an area and extract text
+    func startOCRCapture() {
+        isCapturing = true
+
+        guard let screen = NSScreen.main else {
+            isCapturing = false
+            return
+        }
+
+        let window = createCaptureOverlayWindow(for: screen)
+        let contentView = AreaSelectionView(
+            onComplete: { [weak self] rect in
+                self?.captureAreaForOCR(rect: rect, screen: screen)
+            },
+            onCancel: { [weak self] in
+                self?.cancelCapture()
+            }
+        )
+
+        window.contentView = NSHostingView(rootView: contentView)
+        window.makeKeyAndOrderFront(nil)
+        captureWindows.append(window)
+    }
+
+    private func captureAreaForOCR(rect: CGRect, screen: NSScreen) {
+        // Hide capture windows first
+        for window in captureWindows {
+            window.orderOut(nil)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self else { return }
+
+            // Convert to screen coordinates
+            let screenRect = CGRect(
+                x: rect.origin.x + screen.frame.origin.x,
+                y: screen.frame.height - rect.origin.y - rect.height + screen.frame.origin.y,
+                width: rect.width,
+                height: rect.height
+            )
+
+            guard let cgImage = CGWindowListCreateImage(
+                screenRect,
+                .optionOnScreenBelowWindow,
+                kCGNullWindowID,
+                [.bestResolution]
+            ) else {
+                self.isCapturing = false
+                self.closeCaptureWindows()
+                return
+            }
+
+            let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            self.closeCaptureWindows()
+            self.isCapturing = false
+
+            // Perform OCR
+            OCRService.shared.extractText(from: nsImage) { result in
+                switch result {
+                case .success(let text):
+                    // Copy to clipboard and show notification
+                    OCRService.shared.copyToClipboard(text)
+                    self.showOCRResult(text: text)
+                case .failure(let error):
+                    self.showOCRError(error: error)
+                }
+            }
+        }
+    }
+
+    private func showOCRResult(text: String) {
+        guard let screen = NSScreen.main else { return }
+
+        let windowSize = NSSize(width: 400, height: 300)
+        let windowOrigin = NSPoint(
+            x: (screen.visibleFrame.width - windowSize.width) / 2 + screen.visibleFrame.origin.x,
+            y: (screen.visibleFrame.height - windowSize.height) / 2 + screen.visibleFrame.origin.y
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: windowOrigin, size: windowSize),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Extracted text"
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+
+        let resultView = OCRResultView(text: text) {
+            window.close()
+        }
+
+        window.contentView = NSHostingView(rootView: resultView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func showOCRError(error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "OCR failed"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     func saveToFile(_ screenshot: Screenshot, url: URL? = nil) {
@@ -287,7 +477,35 @@ class ScreenCaptureService: ObservableObject {
     // MARK: - Capture Completion
 
     private func completeCapture(image: NSImage, type: CaptureType) {
-        let screenshot = Screenshot(image: image, captureType: type)
+        NSLog("[ScreenCaptureService] completeCapture started")
+
+        // Convert NSImage to PNG Data ONCE
+        // This creates a completely independent byte buffer with no references to the original image
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            NSLog("[ScreenCaptureService] Failed to convert image to PNG data")
+            isCapturing = false
+            return
+        }
+
+        let imageSize = image.size
+        NSLog("[ScreenCaptureService] PNG data created, size: %d bytes, image size: %@", pngData.count, NSStringFromSize(imageSize))
+
+        // Create screenshot directly from PNG data - no NSImage intermediaries
+        // Use a single shared ID so history and editor refer to the same logical screenshot
+        let screenshotId = UUID()
+        let capturedAt = Date()
+
+        let screenshot = Screenshot(
+            id: screenshotId,
+            pngData: pngData,
+            imageSize: imageSize,
+            capturedAt: capturedAt,
+            captureType: type
+        )
+
+        NSLog("[ScreenCaptureService] Screenshot created with id: %@", screenshotId.uuidString)
 
         currentCapture = screenshot
         recentCaptures.insert(screenshot, at: 0)
@@ -302,12 +520,48 @@ class ScreenCaptureService: ObservableObject {
             copyToClipboard(screenshot)
         }
 
-        // Show quick overlay
-        if SettingsManager.shared.settings.showQuickOverlay {
-            showQuickOverlay(for: screenshot)
-        }
+        // Open the annotation editor
+        // Pass the PNG data and metadata directly to avoid any reference issues
+        openEditorDirectly(
+            pngData: pngData,
+            imageSize: imageSize,
+            screenshotId: screenshotId,
+            capturedAt: capturedAt,
+            captureType: type
+        )
 
         isCapturing = false
+        NSLog("[ScreenCaptureService] completeCapture finished")
+    }
+
+    /// Opens the annotation editor directly using PNG data (avoids all reference issues)
+    private func openEditorDirectly(
+        pngData: Data,
+        imageSize: CGSize,
+        screenshotId: UUID,
+        capturedAt: Date,
+        captureType: CaptureType
+    ) {
+        NSLog("[ScreenCaptureService] openEditorDirectly called with screenshot id: %@", screenshotId.uuidString)
+
+        // Create a fresh Screenshot from the PNG data for the editor
+        // This is completely independent - just bytes in memory
+        let editorScreenshot = Screenshot(
+            id: screenshotId,
+            pngData: pngData,
+            imageSize: imageSize,
+            capturedAt: capturedAt,
+            captureType: captureType
+        )
+
+        NSLog("[ScreenCaptureService] About to call showEditor")
+        AnnotationEditorWindowController.shared.showEditor(for: editorScreenshot) { updatedScreenshot in
+            NSLog("[ScreenCaptureService] Save callback invoked")
+            Task { @MainActor in
+                ScreenCaptureService.shared.saveToFile(updatedScreenshot)
+            }
+        }
+        NSLog("[ScreenCaptureService] showEditor returned")
     }
 
     private func showQuickOverlay(for screenshot: Screenshot) {
@@ -387,6 +641,187 @@ class ScreenCaptureService: ObservableObject {
 import SwiftUI
 
 // Removed problematic NSHostingView extension that caused infinite recursion
+
+// MARK: - OCR Result View
+struct OCRResultView: View {
+    let text: String
+    let onDismiss: () -> Void
+
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 18))
+                Text("Text copied to clipboard")
+                    .font(.system(size: 14, weight: .medium))
+                Spacer()
+            }
+
+            ScrollView {
+                Text(text)
+                    .font(.system(size: 13, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(0.05))
+            )
+
+            HStack {
+                Button(action: {
+                    OCRService.shared.copyToClipboard(text)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.clipboard")
+                        Text(copied ? "Copied" : "Copy again")
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.primary.opacity(0.08))
+                )
+
+                Spacer()
+
+                Button("Close") {
+                    onDismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 400, height: 300)
+    }
+}
+
+// MARK: - Timed Capture Modal View
+struct TimedCaptureModalView: View {
+    let onSelect: (Int) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Select timer delay")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 16) {
+                TimerOptionButton(seconds: 3, onSelect: onSelect)
+                TimerOptionButton(seconds: 5, onSelect: onSelect)
+                TimerOptionButton(seconds: 10, onSelect: onSelect)
+            }
+
+            Button("Cancel") {
+                onCancel()
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
+            .font(.system(size: 12))
+        }
+        .padding(24)
+        .frame(width: 280, height: 180)
+    }
+}
+
+struct TimerOptionButton: View {
+    let seconds: Int
+    let onSelect: (Int) -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: { onSelect(seconds) }) {
+            VStack(spacing: 6) {
+                Text("\(seconds)")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(isHovered ? .white : .primary)
+
+                Text("sec")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isHovered ? .white.opacity(0.8) : .secondary)
+            }
+            .frame(width: 70, height: 70)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isHovered ? Color.orange : Color.primary.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Timed Capture Countdown View
+struct TimedCaptureCountdownView: View {
+    let seconds: Int
+    let onComplete: () -> Void
+
+    @State private var countdown: Int
+
+    init(seconds: Int, onComplete: @escaping () -> Void) {
+        self.seconds = seconds
+        self.onComplete = onComplete
+        self._countdown = State(initialValue: seconds)
+    }
+
+    var body: some View {
+        ZStack {
+            // Background
+            Circle()
+                .fill(Color.black.opacity(0.85))
+                .frame(width: 100, height: 100)
+
+            // Progress ring
+            Circle()
+                .stroke(Color.white.opacity(0.2), lineWidth: 6)
+                .frame(width: 90, height: 90)
+
+            Circle()
+                .trim(from: 0, to: CGFloat(countdown) / CGFloat(seconds))
+                .stroke(Color.orange, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .frame(width: 90, height: 90)
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 1), value: countdown)
+
+            // Countdown number
+            Text("\(countdown)")
+                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .frame(width: 120, height: 120)
+        .onAppear {
+            startCountdown()
+        }
+    }
+
+    private func startCountdown() {
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            if countdown > 1 {
+                countdown -= 1
+            } else {
+                timer.invalidate()
+                onComplete()
+            }
+        }
+    }
+}
 
 // MARK: - Capture Window (handles ESC key)
 class CaptureWindow: NSWindow {

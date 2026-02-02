@@ -1,16 +1,31 @@
 import Foundation
 import AppKit
+import CoreGraphics
 
-/// Represents a captured screenshot with metadata
+/// Represents a captured screenshot with metadata.
+/// IMPORTANT: This is a STRUCT that stores image as PNG Data.
+/// Being a value type, it's copied on assignment, avoiding all reference issues.
 struct Screenshot: Identifiable {
     let id: UUID
-    let image: NSImage
+    /// Store PNG data - completely independent, value-type storage
+    let pngData: Data
+    /// Cached size
+    let imageSize: CGSize
     let capturedAt: Date
     let captureType: CaptureType
     var annotations: [Annotation]
     var extractedText: String?
     var aiDescription: String?
 
+    /// Returns a NEW NSImage each time from the stored PNG data.
+    var image: NSImage {
+        guard let img = NSImage(data: pngData) else {
+            return NSImage(size: NSSize(width: 1, height: 1))
+        }
+        return img
+    }
+
+    /// Initialize from NSImage - converts to PNG data immediately
     init(
         id: UUID = UUID(),
         image: NSImage,
@@ -21,7 +36,40 @@ struct Screenshot: Identifiable {
         aiDescription: String? = nil
     ) {
         self.id = id
-        self.image = image
+        self.capturedAt = capturedAt
+        self.captureType = captureType
+        self.annotations = annotations
+        self.extractedText = extractedText
+        self.aiDescription = aiDescription
+        self.imageSize = image.size
+
+        // Convert to PNG data immediately
+        if let tiffData = image.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiffData),
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            self.pngData = png
+        } else if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
+            self.pngData = bitmapRep.representation(using: .png, properties: [:]) ?? Data()
+        } else {
+            self.pngData = Data()
+        }
+    }
+
+    /// Initialize directly from PNG data
+    init(
+        id: UUID = UUID(),
+        pngData: Data,
+        imageSize: CGSize,
+        capturedAt: Date = Date(),
+        captureType: CaptureType,
+        annotations: [Annotation] = [],
+        extractedText: String? = nil,
+        aiDescription: String? = nil
+    ) {
+        self.id = id
+        self.pngData = pngData
+        self.imageSize = imageSize
         self.capturedAt = capturedAt
         self.captureType = captureType
         self.annotations = annotations
@@ -663,20 +711,15 @@ struct DodoShotProject: Codable {
         self.modifiedAt = Date()
         self.captureType = screenshot.captureType
         self.annotations = screenshot.annotations
-
-        // Convert image to PNG data
-        guard let tiffData = screenshot.image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
-            throw DodoShotProjectError.imageConversionFailed
-        }
-        self.imageData = pngData
+        self.imageData = screenshot.pngData
     }
 
     func toScreenshot() -> Screenshot? {
+        guard !imageData.isEmpty else { return nil }
         guard let image = NSImage(data: imageData) else { return nil }
         return Screenshot(
-            image: image,
+            pngData: imageData,
+            imageSize: image.size,
             capturedAt: createdAt,
             captureType: captureType,
             annotations: annotations

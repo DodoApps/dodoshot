@@ -75,7 +75,13 @@ class MeasurementService: ObservableObject {
         }
 
         let window = createMeasurementWindow(for: screen)
+
+        // Order front first to get a valid window number
+        window.orderFront(nil)
+        let windowNumber = CGWindowID(window.windowNumber)
+
         let contentView = ColorPickerOverlayView(
+            excludeWindowNumber: windowNumber,
             onPick: { [weak self] color in
                 self?.pickedColor = color
                 self?.showColorInfo(color)
@@ -404,6 +410,7 @@ struct MeasurementOverlay: View {
 
 // MARK: - Color Picker Overlay View
 struct ColorPickerOverlayView: View {
+    let excludeWindowNumber: CGWindowID
     let onPick: (NSColor) -> Void
     let onCancel: () -> Void
 
@@ -414,8 +421,8 @@ struct ColorPickerOverlayView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Semi-transparent overlay
-                Color.black.opacity(0.01)
+                // Fully transparent overlay - we just need to capture mouse events
+                Color.clear
 
                 // Instruction badge
                 VStack {
@@ -452,17 +459,18 @@ struct ColorPickerOverlayView: View {
         // Get color at screen position
         guard let screen = NSScreen.main else { return }
 
-        // Convert to screen coordinates
+        // Convert to screen coordinates (flip Y axis for Core Graphics)
         let screenPoint = CGPoint(
             x: position.x + screen.frame.origin.x,
             y: screen.frame.height - position.y + screen.frame.origin.y
         )
 
-        // Capture a 1x1 pixel at the position
+        // Capture a 1x1 pixel at the position, excluding our overlay window
+        // Use .optionOnScreenBelowWindow with our window number to get content beneath
         if let cgImage = CGWindowListCreateImage(
             CGRect(x: screenPoint.x, y: screenPoint.y, width: 1, height: 1),
             .optionOnScreenBelowWindow,
-            kCGNullWindowID,
+            excludeWindowNumber,
             []
         ) {
             if let dataProvider = cgImage.dataProvider,

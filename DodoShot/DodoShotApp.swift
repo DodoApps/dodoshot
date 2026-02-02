@@ -25,6 +25,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         captureService = ScreenCaptureService.shared
         hotkeyManager = HotkeyManager.shared
 
+        // Set activation policy to regular so app appears in Cmd-Tab
+        NSApp.setActivationPolicy(.regular)
+
         // Setup menu bar
         setupMenuBar()
 
@@ -80,6 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             let project = try DodoShotProject.load(from: url)
             if let screenshot = project.toScreenshot() {
+                // Screenshot stores image as Data internally, so no deep copy needed
                 AnnotationEditorWindowController.shared.showEditor(for: screenshot) { updatedScreenshot in
                     // Save back to the same file
                     do {

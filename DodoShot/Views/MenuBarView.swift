@@ -79,11 +79,6 @@ struct MenuBarView: View {
             HeaderButton(icon: "clock.arrow.circlepath", tooltip: L10n.Menu.history) {
                 CaptureHistoryWindowController.shared.showHistory()
             }
-
-            // Settings button
-            HeaderButton(icon: "gearshape", tooltip: L10n.Menu.settings) {
-                openSettings()
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -146,11 +141,19 @@ struct MenuBarView: View {
             }
 
             MenuToolButton(
-                icon: "text.viewfinder",
-                label: L10n.Menu.ocr,
+                icon: "timer",
+                label: "Timed",
                 color: .orange
             ) {
-                // TODO: OCR
+                startTimedCapture()
+            }
+
+            MenuToolButton(
+                icon: "text.viewfinder",
+                label: L10n.Menu.ocr,
+                color: .teal
+            ) {
+                startOCRCapture()
             }
         }
         .padding(.horizontal, 12)
@@ -241,6 +244,22 @@ struct MenuBarView: View {
         NSApp.sendAction(#selector(AppDelegate.closePopover), to: nil, from: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             MeasurementService.shared.startColorPicker()
+        }
+    }
+
+    private func startTimedCapture() {
+        // Close the popover first
+        NSApp.sendAction(#selector(AppDelegate.closePopover), to: nil, from: nil)
+        // Show timer selection modal after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            ScreenCaptureService.shared.showTimedCaptureModal()
+        }
+    }
+
+    private func startOCRCapture() {
+        NSApp.sendAction(#selector(AppDelegate.closePopover), to: nil, from: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            ScreenCaptureService.shared.startOCRCapture()
         }
     }
 

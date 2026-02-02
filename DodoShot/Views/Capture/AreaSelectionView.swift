@@ -248,6 +248,11 @@ class MouseTrackingNSView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    // Accept mouse events even when window is not key (fixes first click issue)
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true  // Accept first click even if window is not key
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
 
@@ -257,7 +262,7 @@ class MouseTrackingNSView: NSView {
 
         trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited],
+            options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -269,7 +274,16 @@ class MouseTrackingNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.makeFirstResponder(self)
+        // Make this view the first responder immediately
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let window = self.window else { return }
+            window.makeFirstResponder(self)
+            window.makeKey()
+        }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        return true
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -279,6 +293,10 @@ class MouseTrackingNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // Ensure we're first responder on click
+        if window?.firstResponder != self {
+            window?.makeFirstResponder(self)
+        }
         let location = convert(event.locationInWindow, from: nil)
         let flippedY = bounds.height - location.y
         onMouseDown?(CGPoint(x: location.x, y: flippedY))
