@@ -1,0 +1,163 @@
+/*
+  Localizable.strings
+  DodoShot - Spanish (Español)
+*/
+
+// MARK: - Menu Bar
+"menu.capture" = "Capturar";
+"menu.area" = "Área";
+"menu.window" = "Ventana";
+"menu.fullscreen" = "Pantalla completa";
+"menu.scrolling" = "Captura con desplazamiento";
+"menu.scrolling.new" = "NUEVO";
+"menu.tools" = "Herramientas";
+"menu.ruler" = "Regla";
+"menu.colorPicker" = "Selector de color";
+"menu.ocr" = "OCR";
+"menu.recentCaptures" = "Capturas recientes";
+"menu.noRecentCaptures" = "Sin capturas recientes";
+"menu.showAll" = "Mostrar todo";
+"menu.settings" = "Ajustes";
+"menu.quit" = "Salir de DodoShot";
+"menu.history" = "Historial";
+"menu.ready" = "Listo para capturar";
+"menu.scrolling.description" = "Capturar páginas largas";
+"menu.clearHistory" = "Borrar historial";
+
+// MARK: - Capture Types
+"capture.area" = "Área";
+"capture.window" = "Ventana";
+"capture.fullscreen" = "Pantalla completa";
+"capture.scrolling" = "Desplazamiento";
+
+// MARK: - Quick Overlay
+"overlay.copy" = "Copiar";
+"overlay.save" = "Guardar";
+"overlay.annotate" = "Anotar";
+"overlay.pin" = "Fijar";
+"overlay.close" = "Cerrar";
+"overlay.justNow" = "Ahora mismo";
+"overlay.copied" = "Copiado";
+
+// MARK: - Annotation Editor
+"annotation.title" = "Editor de anotaciones";
+"annotation.arrow" = "Flecha";
+"annotation.rectangle" = "Rectángulo";
+"annotation.ellipse" = "Elipse";
+"annotation.line" = "Línea";
+"annotation.text" = "Texto";
+"annotation.blur" = "Difuminar";
+"annotation.highlight" = "Resaltar";
+"annotation.freehand" = "Mano alzada";
+"annotation.undo" = "Deshacer";
+"annotation.clear" = "Borrar";
+"annotation.cancel" = "Cancelar";
+"annotation.addText" = "Añadir texto";
+"annotation.addTextTitle" = "Añadir anotación de texto";
+"annotation.textPlaceholder" = "Escribe tu texto...";
+"annotation.annotations" = "%d anotación";
+"annotation.annotationsPlural" = "%d anotaciones";
+
+// MARK: - Settings
+"settings.title" = "Ajustes";
+"settings.general" = "General";
+"settings.hotkeys" = "Atajos";
+"settings.ai" = "IA";
+"settings.about" = "Acerca de";
+
+// Settings - General
+"settings.appearance" = "Apariencia";
+"settings.appearance.description" = "Elige cómo se ve DodoShot";
+"settings.appearance.system" = "Sistema";
+"settings.appearance.light" = "Claro";
+"settings.appearance.dark" = "Oscuro";
+"settings.capture" = "Captura";
+"settings.autoCopy" = "Copiar automáticamente";
+"settings.autoCopy.description" = "Copiar capturas al portapapeles automáticamente";
+"settings.showOverlay" = "Mostrar vista previa";
+"settings.showOverlay.description" = "Mostrar panel de acciones después de capturar";
+"settings.hideDesktopIcons" = "Ocultar iconos del escritorio";
+"settings.hideDesktopIcons.description" = "Ocultar iconos temporalmente durante la captura";
+"settings.storage" = "Almacenamiento";
+"settings.saveLocation" = "Ubicación de guardado";
+"settings.choose" = "Elegir";
+
+// Settings - Hotkeys
+"settings.shortcuts" = "Atajos de teclado";
+"settings.areaCapture" = "Captura de área";
+"settings.windowCapture" = "Captura de ventana";
+"settings.fullscreenCapture" = "Captura de pantalla completa";
+"settings.recording" = "Grabando...";
+"settings.permissions" = "Permiso de accesibilidad requerido";
+"settings.permissions.description" = "DodoShot necesita acceso de accesibilidad para los atajos globales.";
+"settings.openSettings" = "Abrir ajustes";
+
+// Settings - AI
+"settings.llmConfig" = "Configuración LLM";
+"settings.provider" = "Proveedor";
+"settings.apiKey" = "Clave API";
+"settings.apiKeyPlaceholder" = "Introduce tu clave API...";
+"settings.apiKeySecure" = "Tu clave API se almacena localmente y nunca se comparte";
+"settings.aiFeatures" = "Funciones de IA";
+"settings.smartDescriptions" = "Descripciones inteligentes";
+"settings.smartDescriptions.description" = "Analizar capturas y generar descripciones detalladas";
+"settings.ocrExtraction" = "Extracción de texto OCR";
+"settings.ocrExtraction.description" = "Extraer y copiar texto de cualquier captura";
+"settings.contentSuggestions" = "Sugerencias de contenido";
+"settings.contentSuggestions.description" = "Obtener sugerencias inteligentes para anotaciones";
+
+// Settings - About
+"settings.version" = "Versión %@";
+"settings.tagline" = "Una herramienta de captura de pantalla simple y hermosa para macOS";
+"settings.openSource" = "Código abierto • Licencia MIT";
+"settings.viewOnGitHub" = "Ver en GitHub";
+"settings.madeWith" = "Hecho con ♥ para la comunidad macOS";
+
+// MARK: - Capture History
+"history.title" = "Historial de capturas";
+"history.all" = "Todo";
+"history.areas" = "Áreas";
+"history.windows" = "Ventanas";
+"history.fullscreens" = "Pantalla completa";
+"history.newest" = "Más reciente";
+"history.oldest" = "Más antiguo";
+"history.noCaptures" = "Sin capturas aún";
+"history.noCaptures.description" = "Tus capturas aparecerán aquí";
+"history.startCapturing" = "Empezar a capturar";
+"history.delete" = "Eliminar";
+"history.showInFinder" = "Mostrar en Finder";
+"history.showOverlay" = "Mostrar panel";
+
+// MARK: - Permissions
+"permissions.title" = "Permisos requeridos";
+"permissions.description" = "DodoShot necesita permisos de grabación de pantalla y accesibilidad para capturar pantallas y usar atajos globales.";
+"permissions.screenRecording" = "Grabación de pantalla";
+"permissions.screenRecording.description" = "Requerido para capturas de pantalla";
+"permissions.accessibility" = "Accesibilidad";
+"permissions.accessibility.description" = "Requerido para atajos globales";
+"permissions.granted" = "¡Todos los permisos concedidos!";
+"permissions.continue" = "Continuar";
+"permissions.showInFinder" = "Mostrar en Finder";
+"permissions.restart" = "Reiniciar";
+"permissions.later" = "Lo haré más tarde";
+"permissions.instructions" = "Si ya está habilitado pero no funciona:";
+"permissions.step1" = "1. Elimina DodoShot de la lista de permisos";
+"permissions.step2" = "2. Haz clic en \"Mostrar en Finder\" y arrastra la app";
+"permissions.step3" = "3. Reinicia DodoShot";
+
+// MARK: - Window Selection
+"windowSelection.title" = "Selecciona una ventana para capturar";
+"windowSelection.scrollingTitle" = "Selecciona ventana para captura con desplazamiento";
+"windowSelection.cancel" = "Cancelar";
+"windowSelection.escToCancel" = "Pulsa ESC para cancelar";
+
+// MARK: - Area Selection
+"areaSelection.instruction" = "Arrastra para seleccionar • Suelta para capturar";
+
+// MARK: - Context Menu
+"contextMenu.appearance" = "Apariencia";
+"contextMenu.copy" = "Copiar";
+"contextMenu.save" = "Guardar";
+"contextMenu.annotate" = "Anotar";
+"contextMenu.pin" = "Fijar en pantalla";
+"contextMenu.delete" = "Eliminar";

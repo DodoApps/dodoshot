@@ -170,10 +170,11 @@ class ScreenCaptureService: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self = self else { return }
 
-            // Convert to screen coordinates
+            // Convert to global display coordinates
+            // Both SwiftUI and CGWindowListCreateImage use top-left origin with Y increasing downward
             let screenRect = CGRect(
                 x: rect.origin.x + screen.frame.origin.x,
-                y: screen.frame.height - rect.origin.y - rect.height + screen.frame.origin.y,
+                y: rect.origin.y + screen.frame.origin.y,
                 width: rect.width,
                 height: rect.height
             )
@@ -189,7 +190,8 @@ class ScreenCaptureService: ObservableObject {
                 return
             }
 
-            let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            // Use rect.size (points) not cgImage size (pixels) for correct Retina display
+            let nsImage = NSImage(cgImage: cgImage, size: rect.size)
             self.closeCaptureWindows()
             self.isCapturing = false
 
@@ -329,13 +331,38 @@ class ScreenCaptureService: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self = self else { return }
 
-            // Convert to screen coordinates
-            let screenRect = CGRect(
-                x: rect.origin.x + screen.frame.origin.x,
-                y: screen.frame.height - rect.origin.y - rect.height + screen.frame.origin.y,
-                width: rect.width,
-                height: rect.height
+            // Log the input rect and screen info for debugging
+            let scaleFactor = screen.backingScaleFactor
+            NSLog("[ScreenCaptureService] captureArea - input rect: %@, screen: %@, scaleFactor: %.1f",
+                  NSStringFromRect(rect), NSStringFromRect(screen.frame), scaleFactor)
+
+            // Round the rect to integer values to avoid fractional pixel issues
+            let roundedRect = CGRect(
+                x: round(rect.origin.x),
+                y: round(rect.origin.y),
+                width: round(rect.width),
+                height: round(rect.height)
             )
+
+            // The rect from SwiftUI is in the window's coordinate space where:
+            // - Origin (0,0) is at TOP-LEFT of the window
+            // - Y increases downward
+            //
+            // CGWindowListCreateImage expects global display coordinates where:
+            // - Origin (0,0) is at TOP-LEFT of the main display
+            // - Y increases downward
+            //
+            // Since our capture window covers the entire screen starting at screen.frame.origin,
+            // we just need to add the screen's origin to convert to global coordinates.
+            // No Y-flip needed because both coordinate systems have Y increasing downward.
+            let screenRect = CGRect(
+                x: roundedRect.origin.x + screen.frame.origin.x,
+                y: roundedRect.origin.y + screen.frame.origin.y,
+                width: roundedRect.width,
+                height: roundedRect.height
+            )
+
+            NSLog("[ScreenCaptureService] captureArea - screenRect for capture: %@", NSStringFromRect(screenRect))
 
             // Use CGWindowListCreateImage for capture
             guard let cgImage = CGWindowListCreateImage(
@@ -344,12 +371,18 @@ class ScreenCaptureService: ObservableObject {
                 kCGNullWindowID,
                 [.bestResolution]
             ) else {
+                NSLog("[ScreenCaptureService] captureArea - CGWindowListCreateImage failed")
                 self.isCapturing = false
                 self.closeCaptureWindows()
                 return
             }
 
-            let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            NSLog("[ScreenCaptureService] captureArea - cgImage size: %d x %d, expected points: %.0f x %.0f",
+                  cgImage.width, cgImage.height, roundedRect.width, roundedRect.height)
+
+            // Create NSImage with the rounded rect size (in points)
+            // The cgImage contains high-res pixels, NSImage size is in points
+            let nsImage = NSImage(cgImage: cgImage, size: roundedRect.size)
             self.closeCaptureWindows()
             self.completeCapture(image: nsImage, type: .area)
         }
@@ -410,7 +443,8 @@ class ScreenCaptureService: ObservableObject {
             return
         }
 
-        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        // Use windowInfo.frame.size (points) not cgImage size (pixels) for correct Retina display
+        let nsImage = NSImage(cgImage: cgImage, size: windowInfo.frame.size)
         completeCapture(image: nsImage, type: .window)
     }
 
@@ -469,7 +503,8 @@ class ScreenCaptureService: ObservableObject {
                 return
             }
 
-            let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            // Use screen.frame.size (points) not cgImage size (pixels) for correct Retina display
+            let nsImage = NSImage(cgImage: cgImage, size: screen.frame.size)
             self?.completeCapture(image: nsImage, type: .fullscreen)
         }
     }

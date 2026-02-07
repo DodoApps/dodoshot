@@ -1,0 +1,163 @@
+/*
+  Localizable.strings
+  DodoShot - Turkish (Türkçe)
+*/
+
+// MARK: - Menu Bar
+"menu.capture" = "Yakala";
+"menu.area" = "Alan";
+"menu.window" = "Pencere";
+"menu.fullscreen" = "Tam Ekran";
+"menu.scrolling" = "Kaydırmalı Yakalama";
+"menu.scrolling.new" = "YENİ";
+"menu.tools" = "Araçlar";
+"menu.ruler" = "Cetvel";
+"menu.colorPicker" = "Renk Seçici";
+"menu.ocr" = "OCR";
+"menu.recentCaptures" = "Son Yakalamalar";
+"menu.noRecentCaptures" = "Son yakalama yok";
+"menu.showAll" = "Tümünü Göster";
+"menu.settings" = "Ayarlar";
+"menu.quit" = "DodoShot'tan Çık";
+"menu.history" = "Geçmiş";
+"menu.ready" = "Yakalamaya hazır";
+"menu.scrolling.description" = "Uzun sayfaları yakala";
+"menu.clearHistory" = "Geçmişi temizle";
+
+// MARK: - Capture Types
+"capture.area" = "Alan";
+"capture.window" = "Pencere";
+"capture.fullscreen" = "Tam Ekran";
+"capture.scrolling" = "Kaydırmalı";
+
+// MARK: - Quick Overlay
+"overlay.copy" = "Kopyala";
+"overlay.save" = "Kaydet";
+"overlay.annotate" = "Düzenle";
+"overlay.pin" = "Sabitle";
+"overlay.close" = "Kapat";
+"overlay.justNow" = "Az önce";
+"overlay.copied" = "Kopyalandı";
+
+// MARK: - Annotation Editor
+"annotation.title" = "Düzenleme Aracı";
+"annotation.arrow" = "Ok";
+"annotation.rectangle" = "Dikdörtgen";
+"annotation.ellipse" = "Elips";
+"annotation.line" = "Çizgi";
+"annotation.text" = "Metin";
+"annotation.blur" = "Bulanıklaştır";
+"annotation.highlight" = "Vurgula";
+"annotation.freehand" = "Serbest Çizim";
+"annotation.undo" = "Geri Al";
+"annotation.clear" = "Temizle";
+"annotation.cancel" = "İptal";
+"annotation.addText" = "Metin ekle";
+"annotation.addTextTitle" = "Metin açıklaması ekle";
+"annotation.textPlaceholder" = "Metninizi yazın...";
+"annotation.annotations" = "%d açıklama";
+"annotation.annotationsPlural" = "%d açıklama";
+
+// MARK: - Settings
+"settings.title" = "Ayarlar";
+"settings.general" = "Genel";
+"settings.hotkeys" = "Kısayollar";
+"settings.ai" = "Yapay Zeka";
+"settings.about" = "Hakkında";
+
+// Settings - General
+"settings.appearance" = "Görünüm";
+"settings.appearance.description" = "DodoShot'un nasıl görüneceğini seçin";
+"settings.appearance.system" = "Sistem";
+"settings.appearance.light" = "Açık";
+"settings.appearance.dark" = "Koyu";
+"settings.capture" = "Yakalama";
+"settings.autoCopy" = "Otomatik panoya kopyala";
+"settings.autoCopy.description" = "Ekran görüntülerini yakaladıktan sonra otomatik kopyala";
+"settings.showOverlay" = "Hızlı önizleme göster";
+"settings.showOverlay.description" = "Yakalamadan sonra eylem panelini göster";
+"settings.hideDesktopIcons" = "Masaüstü simgelerini gizle";
+"settings.hideDesktopIcons.description" = "Tam ekran yakalama sırasında simgeleri geçici olarak gizle";
+"settings.storage" = "Depolama";
+"settings.saveLocation" = "Kayıt konumu";
+"settings.choose" = "Seç";
+
+// Settings - Hotkeys
+"settings.shortcuts" = "Klavye kısayolları";
+"settings.areaCapture" = "Alan yakalama";
+"settings.windowCapture" = "Pencere yakalama";
+"settings.fullscreenCapture" = "Tam ekran yakalama";
+"settings.recording" = "Kaydediliyor...";
+"settings.permissions" = "Erişilebilirlik izni gerekli";
+"settings.permissions.description" = "DodoShot'un global kısayolları çalışması için erişilebilirlik izni gereklidir.";
+"settings.openSettings" = "Ayarları aç";
+
+// Settings - AI
+"settings.llmConfig" = "LLM yapılandırması";
+"settings.provider" = "Sağlayıcı";
+"settings.apiKey" = "API anahtarı";
+"settings.apiKeyPlaceholder" = "API anahtarınızı girin...";
+"settings.apiKeySecure" = "API anahtarınız yerel olarak saklanır ve paylaşılmaz";
+"settings.aiFeatures" = "Yapay zeka özellikleri";
+"settings.smartDescriptions" = "Akıllı açıklamalar";
+"settings.smartDescriptions.description" = "Ekran görüntülerini analiz et ve detaylı açıklamalar oluştur";
+"settings.ocrExtraction" = "OCR metin çıkarma";
+"settings.ocrExtraction.description" = "Herhangi bir ekran görüntüsünden metin çıkar ve kopyala";
+"settings.contentSuggestions" = "İçerik önerileri";
+"settings.contentSuggestions.description" = "Açıklamalar ve düzenlemeler için akıllı öneriler al";
+
+// Settings - About
+"settings.version" = "Sürüm %@";
+"settings.tagline" = "macOS için basit ve güzel bir ekran görüntüsü aracı";
+"settings.openSource" = "Açık Kaynak • MIT Lisansı";
+"settings.viewOnGitHub" = "GitHub'da Görüntüle";
+"settings.madeWith" = "macOS topluluğu için ♥ ile yapıldı";
+
+// MARK: - Capture History
+"history.title" = "Yakalama Geçmişi";
+"history.all" = "Tümü";
+"history.areas" = "Alanlar";
+"history.windows" = "Pencereler";
+"history.fullscreens" = "Tam Ekranlar";
+"history.newest" = "En Yeni";
+"history.oldest" = "En Eski";
+"history.noCaptures" = "Henüz yakalama yok";
+"history.noCaptures.description" = "Ekran görüntüleriniz burada görünecek";
+"history.startCapturing" = "Yakalamaya başla";
+"history.delete" = "Sil";
+"history.showInFinder" = "Finder'da Göster";
+"history.showOverlay" = "Paneli göster";
+
+// MARK: - Permissions
+"permissions.title" = "İzinler Gerekli";
+"permissions.description" = "DodoShot'un ekran görüntüsü alması ve global kısayolları kullanması için Ekran Kaydı ve Erişilebilirlik izinleri gereklidir.";
+"permissions.screenRecording" = "Ekran Kaydı";
+"permissions.screenRecording.description" = "Ekran görüntüsü almak için gerekli";
+"permissions.accessibility" = "Erişilebilirlik";
+"permissions.accessibility.description" = "Global kısayollar için gerekli";
+"permissions.granted" = "Tüm izinler verildi!";
+"permissions.continue" = "Devam Et";
+"permissions.showInFinder" = "Finder'da Göster";
+"permissions.restart" = "Yeniden Başlat";
+"permissions.later" = "Daha sonra yapacağım";
+"permissions.instructions" = "Zaten etkinse ancak çalışmıyorsa:";
+"permissions.step1" = "1. DodoShot'u izin listesinden kaldırın";
+"permissions.step2" = "2. \"Finder'da Göster\"e tıklayın ve uygulamayı geri sürükleyin";
+"permissions.step3" = "3. DodoShot'u yeniden başlatın";
+
+// MARK: - Window Selection
+"windowSelection.title" = "Yakalanacak pencereyi seçin";
+"windowSelection.scrollingTitle" = "Kaydırmalı yakalama için pencere seçin";
+"windowSelection.cancel" = "İptal";
+"windowSelection.escToCancel" = "İptal etmek için ESC'ye basın";
+
+// MARK: - Area Selection
+"areaSelection.instruction" = "Seçmek için sürükle • Yakalamak için bırak";
+
+// MARK: - Context Menu
+"contextMenu.appearance" = "Görünüm";
+"contextMenu.copy" = "Kopyala";
+"contextMenu.save" = "Kaydet";
+"contextMenu.annotate" = "Düzenle";
+"contextMenu.pin" = "Ekrana Sabitle";
+"contextMenu.delete" = "Sil";

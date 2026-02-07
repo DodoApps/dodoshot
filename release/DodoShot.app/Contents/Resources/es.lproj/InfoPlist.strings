@@ -1,0 +1,7 @@
+/*
+  InfoPlist.strings
+  DodoShot - Spanish (Español)
+*/
+
+"CFBundleDisplayName" = "DodoShot";
+"NSHumanReadableCopyright" = "Copyright © 2024 Bluewave Labs. Todos los derechos reservados.";
