@@ -397,10 +397,13 @@ struct AppSettings: Codable {
         }
     }
     var saveLocation: String
+    // Whether the app should show in the Dock / appear in Cmd-Tab
+    var showInDock: Bool
 
     // Custom CodingKeys - exclude llmApiKey as it's computed
     enum CodingKeys: String, CodingKey {
         case anthropicApiKey, openaiApiKey, llmProvider, saveLocation, autoCopyToClipboard
+        case showInDock
         case showQuickOverlay, quickOverlayAutoDismiss, quickOverlayTimeout, hideDesktopIcons
         case hotkeys, appearanceMode, launchAtStartup, imageFormat, jpgQuality, webpQuality
         case defaultAnnotationColor, defaultStrokeWidth, defaultAnnotationTool
@@ -436,6 +439,7 @@ struct AppSettings: Codable {
 
         llmProvider = try container.decodeIfPresent(LLMProvider.self, forKey: .llmProvider) ?? .anthropic
         saveLocation = try container.decode(String.self, forKey: .saveLocation)
+        showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         autoCopyToClipboard = try container.decode(Bool.self, forKey: .autoCopyToClipboard)
         showQuickOverlay = try container.decode(Bool.self, forKey: .showQuickOverlay)
         quickOverlayAutoDismiss = try container.decodeIfPresent(Bool.self, forKey: .quickOverlayAutoDismiss) ?? true
@@ -468,6 +472,7 @@ struct AppSettings: Codable {
         try container.encode(openaiApiKey, forKey: .openaiApiKey)
         try container.encode(llmProvider, forKey: .llmProvider)
         try container.encode(saveLocation, forKey: .saveLocation)
+        try container.encode(showInDock, forKey: .showInDock)
         try container.encode(autoCopyToClipboard, forKey: .autoCopyToClipboard)
         try container.encode(showQuickOverlay, forKey: .showQuickOverlay)
         try container.encode(quickOverlayAutoDismiss, forKey: .quickOverlayAutoDismiss)
@@ -522,6 +527,7 @@ struct AppSettings: Codable {
         openaiApiKey: String,
         llmProvider: LLMProvider,
         saveLocation: String,
+        showInDock: Bool,
         autoCopyToClipboard: Bool,
         showQuickOverlay: Bool,
         quickOverlayAutoDismiss: Bool,
@@ -550,6 +556,7 @@ struct AppSettings: Codable {
         self.openaiApiKey = openaiApiKey
         self.llmProvider = llmProvider
         self.saveLocation = saveLocation
+        self.showInDock = showInDock
         self.autoCopyToClipboard = autoCopyToClipboard
         self.showQuickOverlay = showQuickOverlay
         self.quickOverlayAutoDismiss = quickOverlayAutoDismiss
@@ -584,6 +591,7 @@ struct AppSettings: Codable {
             openaiApiKey: "",
             llmProvider: .anthropic,
             saveLocation: screenshotsPath,
+            showInDock: false,
             autoCopyToClipboard: true,
             showQuickOverlay: true,
             quickOverlayAutoDismiss: true,

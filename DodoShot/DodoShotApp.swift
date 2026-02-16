@@ -25,8 +25,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         captureService = ScreenCaptureService.shared
         hotkeyManager = HotkeyManager.shared
 
-        // Set activation policy to regular so app appears in Cmd-Tab
-        NSApp.setActivationPolicy(.regular)
+        let showInDock = UserDefaults.standard.bool(forKey: "showInDock")
+
+        if showInDock {
+            // Set activation policy to regular so app appears in Cmd-Tab and Dock
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            NSApp.setActivationPolicy(.accessory)
+        }
 
         // Setup menu bar
         setupMenuBar()

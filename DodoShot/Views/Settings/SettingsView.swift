@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @ObservedObject private var settingsManager = SettingsManager.shared
@@ -51,6 +52,19 @@ struct GeneralSettingsTab: View {
                             set: { newValue in
                                 settingsManager.settings.launchAtStartup = newValue
                                 LaunchAtLoginManager.shared.setEnabled(newValue)
+                            }
+                        )
+                    )
+
+                    SettingsToggleRow(
+                        icon: "dock.rectangle",
+                        title: "Show in Dock",
+                        description: "Show DodoShot in the Dock and Cmd-Tab",
+                        isOn: Binding(
+                            get: { settingsManager.settings.showInDock },
+                            set: { newValue in
+                                settingsManager.settings.showInDock = newValue
+                                AppActivationPolicy.apply(showInDock: newValue)
                             }
                         )
                     )
@@ -875,6 +889,13 @@ struct AboutTab: View {
         if let url = URL(string: "https://github.com/bluewave-labs/DodoShot") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+private enum AppActivationPolicy {
+    static func apply(showInDock: Bool) {
+        // Not: Bazı durumlarda Dock/Cmd-Tab davranışı için app’i restart etmek gerekebilir.
+        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
     }
 }
 
