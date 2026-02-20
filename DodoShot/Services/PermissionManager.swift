@@ -246,11 +246,17 @@ final class PermissionManager: ObservableObject {
 
     /// Open Accessibility settings
     func openAccessibilitySettings() {
+        // Prefer the standard Privacy deep link used elsewhere in the app.
         if let url = URL(
-            string:
-                "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"
-        ) {
-            NSWorkspace.shared.open(url)
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        ), NSWorkspace.shared.open(url) {
+            return
+        }
+
+        // Fallback to generic Privacy & Security if deep-linking fails.
+        if let fallbackURL = URL(string: "x-apple.systempreferences:com.apple.preference.security")
+        {
+            NSWorkspace.shared.open(fallbackURL)
         }
     }
 
