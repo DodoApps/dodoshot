@@ -78,6 +78,8 @@
 "settings.showOverlay.description" = "Mostrar panel de acciones después de capturar";
 "settings.hideDesktopIcons" = "Ocultar iconos del escritorio";
 "settings.hideDesktopIcons.description" = "Ocultar iconos temporalmente durante la captura";
+"settings.closeWindowAfterCopy" = "Cerrar ventana al copiar";
+"settings.closeWindowAfterCopy.description" = "Cerrar la ventana del editor después de copiar al portapapeles";
 "settings.storage" = "Almacenamiento";
 "settings.saveLocation" = "Ubicación de guardado";
 "settings.choose" = "Elegir";

@@ -78,6 +78,8 @@
 "settings.showOverlay.description" = "Display overlay with actions after capturing";
 "settings.hideDesktopIcons" = "Hide desktop icons";
 "settings.hideDesktopIcons.description" = "Temporarily hide icons during fullscreen capture";
+"settings.closeWindowAfterCopy" = "Close window after copying";
+"settings.closeWindowAfterCopy.description" = "Close the editor window after copying to clipboard";
 "settings.storage" = "Storage";
 "settings.saveLocation" = "Save location";
 "settings.choose" = "Choose";

@@ -78,6 +78,8 @@
 "settings.showOverlay.description" = "Afficher le panneau d'actions après la capture";
 "settings.hideDesktopIcons" = "Masquer les icônes du bureau";
 "settings.hideDesktopIcons.description" = "Masquer temporairement les icônes pendant la capture plein écran";
+"settings.closeWindowAfterCopy" = "Fermer après la copie";
+"settings.closeWindowAfterCopy.description" = "Fermer la fenêtre d'édition après la copie dans le presse-papiers";
 "settings.storage" = "Stockage";
 "settings.saveLocation" = "Emplacement de sauvegarde";
 "settings.choose" = "Choisir";

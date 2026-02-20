@@ -78,6 +78,8 @@
 "settings.showOverlay.description" = "Yakalamadan sonra eylem panelini göster";
 "settings.hideDesktopIcons" = "Masaüstü simgelerini gizle";
 "settings.hideDesktopIcons.description" = "Tam ekran yakalama sırasında simgeleri geçici olarak gizle";
+"settings.closeWindowAfterCopy" = "Kopyaladıktan sonra pencereyi kapat";
+"settings.closeWindowAfterCopy.description" = "Panoya kopyaladıktan sonra düzenleyici penceresini kapat";
 "settings.storage" = "Depolama";
 "settings.saveLocation" = "Kayıt konumu";
 "settings.choose" = "Seç";

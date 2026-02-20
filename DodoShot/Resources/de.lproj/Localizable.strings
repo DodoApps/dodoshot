@@ -78,6 +78,8 @@
 "settings.showOverlay.description" = "Aktionsleiste nach der Aufnahme anzeigen";
 "settings.hideDesktopIcons" = "Desktop-Symbole ausblenden";
 "settings.hideDesktopIcons.description" = "Symbole während der Vollbildaufnahme ausblenden";
+"settings.closeWindowAfterCopy" = "Fenster nach dem Kopieren schließen";
+"settings.closeWindowAfterCopy.description" = "Editor-Fenster nach dem Kopieren in die Zwischenablage schließen";
 "settings.storage" = "Speicher";
 "settings.saveLocation" = "Speicherort";
 "settings.choose" = "Auswählen";

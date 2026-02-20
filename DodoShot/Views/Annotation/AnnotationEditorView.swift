@@ -1269,6 +1269,11 @@ struct AnnotationEditorView: View {
         pasteboard.clearContents()
         pasteboard.writeObjects([finalImage])
 
+        if SettingsManager.shared.settings.closeWindowAfterCopy {
+            AnnotationEditorWindowController.shared.closeEditor(for: screenshotId)
+            return
+        }
+
         // Show HUD feedback
         withAnimation(.spring(response: 0.3)) {
             hudMessage = "Copied to clipboard"

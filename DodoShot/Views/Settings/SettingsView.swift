@@ -130,6 +130,16 @@ struct GeneralSettingsTab: View {
                             description: L10n.Settings.hideDesktopIconsDescription,
                             isOn: $settingsManager.settings.hideDesktopIcons
                         )
+
+                        Divider()
+                            .padding(.horizontal, -16)
+
+                        SettingsToggleRow(
+                            icon: "xmark.rectangle",
+                            title: L10n.Settings.closeWindowAfterCopy,
+                            description: L10n.Settings.closeWindowAfterCopyDescription,
+                            isOn: $settingsManager.settings.closeWindowAfterCopy
+                        )
                     }
                 }
 

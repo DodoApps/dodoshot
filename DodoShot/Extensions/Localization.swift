@@ -96,6 +96,8 @@ enum L10n {
         static let showOverlayDescription = "settings.showOverlay.description".localized
         static let hideDesktopIcons = "settings.hideDesktopIcons".localized
         static let hideDesktopIconsDescription = "settings.hideDesktopIcons.description".localized
+        static let closeWindowAfterCopy = "settings.closeWindowAfterCopy".localized
+        static let closeWindowAfterCopyDescription = "settings.closeWindowAfterCopy.description".localized
         static let storage = "settings.storage".localized
         static let saveLocation = "settings.saveLocation".localized
         static let choose = "settings.choose".localized
