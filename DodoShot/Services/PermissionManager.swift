@@ -1,6 +1,6 @@
-import Foundation
 import AppKit
 import Combine
+import Foundation
 
 /// Manager for handling Screen Recording and Accessibility permissions
 final class PermissionManager: ObservableObject {
@@ -37,15 +37,33 @@ final class PermissionManager: ObservableObject {
 
     /// Check screen recording permission
     func checkScreenRecordingPermission() {
-        // CGPreflightScreenCaptureAccess is UNRELIABLE - it often returns true even without permission
-        // The ONLY reliable check is to actually capture and verify we get real content (not gray)
+        // If permission is already confirmed, use the lightweight preflight check.
+        // CGPreflightScreenCaptureAccess() does NOT trigger the macOS "is capturing your screen"
+        // indicator, whereas an actual CGWindowListCreateImage call does.
+        if isScreenRecordingGranted {
+            if !CGPreflightScreenCaptureAccess() {
+                NSLog("[PermissionManager] Screen recording revoked (preflight check)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.isScreenRecordingGranted = false
+                }
+            }
+            return
+        }
+
+        // Permission not yet confirmed — do the actual capture test.
+        // CGPreflightScreenCaptureAccess is UNRELIABLE for initial detection (often returns true
+        // even without permission), so we verify by capturing and checking for real content.
         let hasAccess = canActuallyCaptureScreen()
 
-        NSLog("[PermissionManager] Screen recording check (actual capture test): %@", hasAccess ? "true" : "false")
+        NSLog(
+            "[PermissionManager] Screen recording check (actual capture test): %@",
+            hasAccess ? "true" : "false")
 
         DispatchQueue.main.async { [weak self] in
             if self?.isScreenRecordingGranted != hasAccess {
-                NSLog("[PermissionManager] Screen recording changed: %@", hasAccess ? "true" : "false")
+                NSLog(
+                    "[PermissionManager] Screen recording changed: %@", hasAccess ? "true" : "false"
+                )
                 self?.isScreenRecordingGranted = hasAccess
             }
         }
@@ -54,17 +72,21 @@ final class PermissionManager: ObservableObject {
     /// Actually try to capture the screen and verify we get real content
     private func canActuallyCaptureScreen() -> Bool {
         // Get the list of windows on screen (excluding our own app)
-        let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let windowList =
+            CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+            ?? []
 
         // Find a window that's not ours to capture
         let bundleID = Bundle.main.bundleIdentifier ?? ""
         for windowInfo in windowList {
-            guard let _ = windowInfo[kCGWindowOwnerName as String] as? String,
-                  let windowNumber = windowInfo[kCGWindowNumber as String] as? CGWindowID,
-                  let bounds = windowInfo[kCGWindowBounds as String] as? [String: Any],
-                  let width = bounds["Width"] as? CGFloat,
-                  let height = bounds["Height"] as? CGFloat,
-                  width > 10, height > 10 else {
+            guard windowInfo[kCGWindowOwnerName as String] as? String != nil,
+                let windowNumber = windowInfo[kCGWindowNumber as String] as? CGWindowID,
+                let bounds = windowInfo[kCGWindowBounds as String] as? [String: Any],
+                let width = bounds["Width"] as? CGFloat,
+                let height = bounds["Height"] as? CGFloat,
+                width > 10, height > 10
+            else {
                 continue
             }
 
@@ -77,7 +99,12 @@ final class PermissionManager: ObservableObject {
             }
 
             // Try to capture this specific window
-            if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowNumber, [.boundsIgnoreFraming]) {
+            if let image = LegacyWindowImageCapture.createImage(
+                .null,
+                .optionIncludingWindow,
+                windowNumber,
+                [.boundsIgnoreFraming]
+            ) {
                 // Check if the image has actual content by sampling pixels
                 // Without permission, we get either nil or an all-gray image
                 if imageHasRealContent(image) {
@@ -101,15 +128,17 @@ final class PermissionManager: ObservableObject {
         let bytesPerRow = bytesPerPixel * width
         var pixelData = [UInt8](repeating: 0, count: bytesPerRow * height)
 
-        guard let context = CGContext(
-            data: &pixelData,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
+        guard
+            let context = CGContext(
+                data: &pixelData,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else {
             return false
         }
 
@@ -121,7 +150,7 @@ final class PermissionManager: ObservableObject {
             (width / 4, height / 4),
             (width / 2, height / 2),
             (3 * width / 4, 3 * height / 4),
-            (width / 3, 2 * height / 3)
+            (width / 3, 2 * height / 3),
         ]
 
         var colors = Set<UInt32>()
@@ -145,12 +174,14 @@ final class PermissionManager: ObservableObject {
         let trusted = AXIsProcessTrusted()
 
         // Also check with options for more detailed info
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+        let options =
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
         let trustedWithOptions = AXIsProcessTrustedWithOptions(options)
 
-        NSLog("[PermissionManager] Accessibility AXIsProcessTrusted: %@, WithOptions: %@",
-              trusted ? "true" : "false",
-              trustedWithOptions ? "true" : "false")
+        NSLog(
+            "[PermissionManager] Accessibility AXIsProcessTrusted: %@, WithOptions: %@",
+            trusted ? "true" : "false",
+            trustedWithOptions ? "true" : "false")
 
         // Use the result from AXIsProcessTrustedWithOptions as it's more reliable
         var finalResult = trusted || trustedWithOptions
@@ -158,18 +189,20 @@ final class PermissionManager: ObservableObject {
         // For DEBUG builds, allow bypassing accessibility check since ad-hoc signing
         // causes issues with macOS recognizing the approved app after rebuilds
         #if DEBUG
-        if !finalResult {
-            // Check if user has previously skipped (stored in UserDefaults)
-            if UserDefaults.standard.bool(forKey: "debugAccessibilityBypassed") {
-                NSLog("[PermissionManager] DEBUG: Accessibility bypassed by user preference")
-                finalResult = true
+            if !finalResult {
+                // Check if user has previously skipped (stored in UserDefaults)
+                if UserDefaults.standard.bool(forKey: "debugAccessibilityBypassed") {
+                    NSLog("[PermissionManager] DEBUG: Accessibility bypassed by user preference")
+                    finalResult = true
+                }
             }
-        }
         #endif
 
         DispatchQueue.main.async { [weak self] in
             if self?.isAccessibilityGranted != finalResult {
-                NSLog("[PermissionManager] Accessibility changed to: %@", finalResult ? "true" : "false")
+                NSLog(
+                    "[PermissionManager] Accessibility changed to: %@",
+                    finalResult ? "true" : "false")
                 self?.isAccessibilityGranted = finalResult
             }
         }
@@ -178,18 +211,15 @@ final class PermissionManager: ObservableObject {
     /// Bypass accessibility check for debug builds
     func bypassAccessibilityForDebug() {
         #if DEBUG
-        UserDefaults.standard.set(true, forKey: "debugAccessibilityBypassed")
-        isAccessibilityGranted = true
-        NSLog("[PermissionManager] DEBUG: Accessibility check bypassed")
+            UserDefaults.standard.set(true, forKey: "debugAccessibilityBypassed")
+            isAccessibilityGranted = true
+            NSLog("[PermissionManager] DEBUG: Accessibility check bypassed")
         #endif
     }
 
     /// Request screen recording permission
     func requestScreenRecordingPermission() {
-        // Open System Settings to Screen Recording (macOS Ventura and later)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
+        openPrivacySettingsPane(key: "Privacy_ScreenCapture")
 
         // Fallback: try to trigger the system prompt by attempting a capture
         // This will show the permission dialog if not already granted
@@ -199,7 +229,8 @@ final class PermissionManager: ObservableObject {
     /// Request accessibility permission
     @discardableResult
     func requestAccessibilityPermission() -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let options =
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         DispatchQueue.main.async { [weak self] in
             self?.isAccessibilityGranted = trusted
@@ -209,10 +240,7 @@ final class PermissionManager: ObservableObject {
 
     /// Open Screen Recording settings
     func openScreenRecordingSettings() {
-        // Open System Settings directly to Screen Recording (macOS Sonoma)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
+        openPrivacySettingsPane(key: "Privacy_ScreenCapture")
     }
 
     /// Trigger the screen recording system prompt
@@ -222,15 +250,46 @@ final class PermissionManager: ObservableObject {
 
     /// Open Accessibility settings
     func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
+        if openPrivacySettingsPane(key: "Privacy_Accessibility") {
+            return
         }
+
+        // Fallback to generic Privacy & Security if deep-linking fails.
+        let fallbackURLs = [
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension",
+            "x-apple.systempreferences:com.apple.preference.security",
+        ]
+
+        for candidate in fallbackURLs {
+            if let fallbackURL = URL(string: candidate), NSWorkspace.shared.open(fallbackURL) {
+                return
+            }
+        }
+    }
+
+    @discardableResult
+    private func openPrivacySettingsPane(key: String) -> Bool {
+        let urls = [
+            // macOS 13+ format (Ventura, Sonoma, Sequoia)
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?\(key)",
+            // Legacy format kept as fallback
+            "x-apple.systempreferences:com.apple.preference.security?\(key)",
+        ]
+
+        for candidate in urls {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) {
+                return true
+            }
+        }
+
+        return false
     }
 
     /// Show app in Finder (for drag and drop to settings)
     func showAppInFinder() {
         let bundleURL = Bundle.main.bundleURL
-        NSWorkspace.shared.selectFile(bundleURL.path, inFileViewerRootedAtPath: bundleURL.deletingLastPathComponent().path)
+        NSWorkspace.shared.selectFile(
+            bundleURL.path, inFileViewerRootedAtPath: bundleURL.deletingLastPathComponent().path)
     }
 
     /// Restart the app

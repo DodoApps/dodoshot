@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Guided permission onboarding that requests permissions one at a time
 struct PermissionOnboardingView: View {
@@ -14,7 +14,7 @@ struct PermissionOnboardingView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: -20) {
             // Header
             headerView
 
@@ -39,10 +39,10 @@ struct PermissionOnboardingView: View {
         .onDisappear {
             permissionManager.stopMonitoring()
         }
-        .onChange(of: permissionManager.isScreenRecordingGranted) { _ in
+        .onChange(of: permissionManager.isScreenRecordingGranted) { _, _ in
             updateStep()
         }
-        .onChange(of: permissionManager.isAccessibilityGranted) { _ in
+        .onChange(of: permissionManager.isAccessibilityGranted) { _, _ in
             updateStep()
         }
     }
@@ -92,7 +92,12 @@ struct PermissionOnboardingView: View {
                     .frame(width: 8, height: 8)
 
                 Circle()
-                    .fill(permissionManager.isAccessibilityGranted ? Color.green : (currentStep == .accessibility ? Color.purple : Color.gray.opacity(0.3)))
+                    .fill(
+                        permissionManager.isAccessibilityGranted
+                            ? Color.green
+                            : (currentStep == .accessibility
+                                ? Color.purple : Color.gray.opacity(0.3))
+                    )
                     .frame(width: 8, height: 8)
             }
         }
@@ -128,11 +133,13 @@ struct PermissionOnboardingView: View {
                 Text("Screen recording")
                     .font(.system(size: 20, weight: .semibold))
 
-                Text("DodoShot needs screen recording permission to capture screenshots of your screen.")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 340)
+                Text(
+                    "DodoShot needs screen recording permission to capture screenshots of your screen."
+                )
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
             }
 
             Spacer()
@@ -286,11 +293,13 @@ struct PermissionOnboardingView: View {
                 Text("You're all set!")
                     .font(.system(size: 20, weight: .semibold))
 
-                Text("DodoShot is ready to use. Click the menu bar icon or use keyboard shortcuts to capture screenshots.")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 340)
+                Text(
+                    "DodoShot is ready to use. Click the menu bar icon or use keyboard shortcuts to capture screenshots."
+                )
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
             }
 
             Spacer()
@@ -372,10 +381,10 @@ class PermissionOnboardingWindowController {
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let windowWidth: CGFloat = 480
-            let _ = 440 // windowHeight - window auto-sizes to content
+            let _ = 440  // windowHeight - window auto-sizes to content
             // Center horizontally, position in lower third of screen
             let x = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
-            let y = screenFrame.origin.y + screenFrame.height * 0.15 // Lower on screen
+            let y = screenFrame.origin.y + screenFrame.height * 0.15  // Lower on screen
             window.setFrameOrigin(NSPoint(x: x, y: y))
         } else {
             window.center()

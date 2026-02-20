@@ -397,15 +397,18 @@ struct AppSettings: Codable {
         }
     }
     var saveLocation: String
+    // Whether the app should show in the Dock / appear in Cmd-Tab
+    var showInDock: Bool
 
     // Custom CodingKeys - exclude llmApiKey as it's computed
     enum CodingKeys: String, CodingKey {
         case anthropicApiKey, openaiApiKey, llmProvider, saveLocation, autoCopyToClipboard
+        case showInDock
         case showQuickOverlay, quickOverlayAutoDismiss, quickOverlayTimeout, hideDesktopIcons
         case hotkeys, appearanceMode, launchAtStartup, imageFormat, jpgQuality, webpQuality
         case defaultAnnotationColor, defaultStrokeWidth, defaultAnnotationTool
         case textAnnotationSettings, filenameTemplate, sequentialNumber
-        case autoSaveOnEditorClose, autoCopyOnEditorClose, maxVideoRecordingDuration
+        case autoSaveOnEditorClose, autoCopyOnEditorClose, maxVideoRecordingDuration, closeWindowAfterCopy
         case defaultRedactionStyle, defaultRedactionIntensity, defaultStepCounterFormat
         // Legacy key for backward compatibility
         case llmApiKey
@@ -436,6 +439,7 @@ struct AppSettings: Codable {
 
         llmProvider = try container.decodeIfPresent(LLMProvider.self, forKey: .llmProvider) ?? .anthropic
         saveLocation = try container.decode(String.self, forKey: .saveLocation)
+        showInDock = try container.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
         autoCopyToClipboard = try container.decode(Bool.self, forKey: .autoCopyToClipboard)
         showQuickOverlay = try container.decode(Bool.self, forKey: .showQuickOverlay)
         quickOverlayAutoDismiss = try container.decodeIfPresent(Bool.self, forKey: .quickOverlayAutoDismiss) ?? true
@@ -456,6 +460,7 @@ struct AppSettings: Codable {
         autoSaveOnEditorClose = try container.decodeIfPresent(Bool.self, forKey: .autoSaveOnEditorClose) ?? false
         autoCopyOnEditorClose = try container.decodeIfPresent(Bool.self, forKey: .autoCopyOnEditorClose) ?? true
         maxVideoRecordingDuration = try container.decodeIfPresent(Int.self, forKey: .maxVideoRecordingDuration) ?? 20
+        closeWindowAfterCopy = try container.decodeIfPresent(Bool.self, forKey: .closeWindowAfterCopy) ?? false
         defaultRedactionStyle = try container.decodeIfPresent(RedactionStyle.self, forKey: .defaultRedactionStyle) ?? .blur
         defaultRedactionIntensity = try container.decodeIfPresent(Double.self, forKey: .defaultRedactionIntensity) ?? 0.7
         defaultStepCounterFormat = try container.decodeIfPresent(StepCounterFormat.self, forKey: .defaultStepCounterFormat) ?? .numeric
@@ -468,6 +473,7 @@ struct AppSettings: Codable {
         try container.encode(openaiApiKey, forKey: .openaiApiKey)
         try container.encode(llmProvider, forKey: .llmProvider)
         try container.encode(saveLocation, forKey: .saveLocation)
+        try container.encode(showInDock, forKey: .showInDock)
         try container.encode(autoCopyToClipboard, forKey: .autoCopyToClipboard)
         try container.encode(showQuickOverlay, forKey: .showQuickOverlay)
         try container.encode(quickOverlayAutoDismiss, forKey: .quickOverlayAutoDismiss)
@@ -488,6 +494,7 @@ struct AppSettings: Codable {
         try container.encode(autoSaveOnEditorClose, forKey: .autoSaveOnEditorClose)
         try container.encode(autoCopyOnEditorClose, forKey: .autoCopyOnEditorClose)
         try container.encode(maxVideoRecordingDuration, forKey: .maxVideoRecordingDuration)
+        try container.encode(closeWindowAfterCopy, forKey: .closeWindowAfterCopy)
         try container.encode(defaultRedactionStyle, forKey: .defaultRedactionStyle)
         try container.encode(defaultRedactionIntensity, forKey: .defaultRedactionIntensity)
         try container.encode(defaultStepCounterFormat, forKey: .defaultStepCounterFormat)
@@ -512,6 +519,7 @@ struct AppSettings: Codable {
     var autoSaveOnEditorClose: Bool
     var autoCopyOnEditorClose: Bool
     var maxVideoRecordingDuration: Int  // seconds (max 20)
+    var closeWindowAfterCopy: Bool
     var defaultRedactionStyle: RedactionStyle
     var defaultRedactionIntensity: Double
     var defaultStepCounterFormat: StepCounterFormat
@@ -522,6 +530,7 @@ struct AppSettings: Codable {
         openaiApiKey: String,
         llmProvider: LLMProvider,
         saveLocation: String,
+        showInDock: Bool,
         autoCopyToClipboard: Bool,
         showQuickOverlay: Bool,
         quickOverlayAutoDismiss: Bool,
@@ -542,6 +551,7 @@ struct AppSettings: Codable {
         autoSaveOnEditorClose: Bool,
         autoCopyOnEditorClose: Bool,
         maxVideoRecordingDuration: Int,
+        closeWindowAfterCopy: Bool,
         defaultRedactionStyle: RedactionStyle,
         defaultRedactionIntensity: Double,
         defaultStepCounterFormat: StepCounterFormat
@@ -550,6 +560,7 @@ struct AppSettings: Codable {
         self.openaiApiKey = openaiApiKey
         self.llmProvider = llmProvider
         self.saveLocation = saveLocation
+        self.showInDock = showInDock
         self.autoCopyToClipboard = autoCopyToClipboard
         self.showQuickOverlay = showQuickOverlay
         self.quickOverlayAutoDismiss = quickOverlayAutoDismiss
@@ -570,6 +581,7 @@ struct AppSettings: Codable {
         self.autoSaveOnEditorClose = autoSaveOnEditorClose
         self.autoCopyOnEditorClose = autoCopyOnEditorClose
         self.maxVideoRecordingDuration = maxVideoRecordingDuration
+        self.closeWindowAfterCopy = closeWindowAfterCopy
         self.defaultRedactionStyle = defaultRedactionStyle
         self.defaultRedactionIntensity = defaultRedactionIntensity
         self.defaultStepCounterFormat = defaultStepCounterFormat
@@ -584,6 +596,7 @@ struct AppSettings: Codable {
             openaiApiKey: "",
             llmProvider: .anthropic,
             saveLocation: screenshotsPath,
+            showInDock: false,
             autoCopyToClipboard: true,
             showQuickOverlay: true,
             quickOverlayAutoDismiss: true,
@@ -604,6 +617,7 @@ struct AppSettings: Codable {
             autoSaveOnEditorClose: false,
             autoCopyOnEditorClose: true,
             maxVideoRecordingDuration: 20,
+            closeWindowAfterCopy: false,
             defaultRedactionStyle: .blur,
             defaultRedactionIntensity: 0.7,
             defaultStepCounterFormat: .numeric

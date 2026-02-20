@@ -509,7 +509,7 @@ struct AnnotationEditorView: View {
                                 imageSize = imageGeometry.size
                                 actualImageSize = imageGeometry.size
                             }
-                            .onChange(of: imageGeometry.size) { newSize in
+                            .onChange(of: imageGeometry.size) { _, newSize in
                                 imageSize = newSize
                                 actualImageSize = newSize
                             }
@@ -1268,6 +1268,11 @@ struct AnnotationEditorView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([finalImage])
+
+        if SettingsManager.shared.settings.closeWindowAfterCopy {
+            AnnotationEditorWindowController.shared.closeEditor(for: screenshotId)
+            return
+        }
 
         // Show HUD feedback
         withAnimation(.spring(response: 0.3)) {
@@ -2424,17 +2429,13 @@ class AnnotationCanvasNSView: NSView, NSTextFieldDelegate {
     }
 
     private func pickColorAt(_ point: CGPoint) {
-        // Get the window's backing image
-        guard let window = self.window,
-              let cgImage = CGWindowListCreateImage(
-                  window.frame,
-                  .optionIncludingWindow,
-                  CGWindowID(window.windowNumber),
-                  [.bestResolution]
-              ) else { return }
+        // Capture the view's rendered content directly (no screen capture API needed)
+        guard let bitmapRep = bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        cacheDisplay(in: bounds, to: bitmapRep)
+        guard let cgImage = bitmapRep.cgImage else { return }
 
         // Convert point to image coordinates
-        let scale = window.backingScaleFactor
+        let scale = window?.backingScaleFactor ?? 1.0
         let imageX = Int(point.x * scale)
         let imageY = Int(point.y * scale)
 

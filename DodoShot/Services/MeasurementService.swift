@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Service for screen measurements - pixel ruler and color picker
@@ -173,10 +173,11 @@ class MeasurementService: ObservableObject {
 
         // Position near cursor
         if let mouseLocation = NSEvent.mouseLocation as CGPoint? {
-            window.setFrameOrigin(NSPoint(
-                x: mouseLocation.x + 20,
-                y: mouseLocation.y - 160
-            ))
+            window.setFrameOrigin(
+                NSPoint(
+                    x: mouseLocation.x + 20,
+                    y: mouseLocation.y - 160
+                ))
         }
 
         window.makeKeyAndOrderFront(nil)
@@ -200,9 +201,13 @@ class MeasurementService: ObservableObject {
             let (h, s, l) = rgbToHSL(r: r, g: g, b: b)
             return String(format: "hsl(%d, %d%%, %d%%)", Int(h), Int(s * 100), Int(l * 100))
         case .swiftUI:
-            return String(format: "Color(red: %.3f, green: %.3f, blue: %.3f)", rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+            return String(
+                format: "Color(red: %.3f, green: %.3f, blue: %.3f)", rgb.redComponent,
+                rgb.greenComponent, rgb.blueComponent)
         case .nsColor:
-            return String(format: "NSColor(red: %.3f, green: %.3f, blue: %.3f, alpha: %.3f)", rgb.redComponent, rgb.greenComponent, rgb.blueComponent, a)
+            return String(
+                format: "NSColor(red: %.3f, green: %.3f, blue: %.3f, alpha: %.3f)",
+                rgb.redComponent, rgb.greenComponent, rgb.blueComponent, a)
         }
     }
 
@@ -373,7 +378,9 @@ struct MeasurementOverlay: View {
             }
 
             // Corner markers
-            ForEach([start, CGPoint(x: end.x, y: start.y), end, CGPoint(x: start.x, y: end.y)], id: \.x) { point in
+            ForEach(
+                [start, CGPoint(x: end.x, y: start.y), end, CGPoint(x: start.x, y: end.y)], id: \.x
+            ) { point in
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 8, height: 8)
@@ -467,15 +474,16 @@ struct ColorPickerOverlayView: View {
 
         // Capture a 1x1 pixel at the position, excluding our overlay window
         // Use .optionOnScreenBelowWindow with our window number to get content beneath
-        if let cgImage = CGWindowListCreateImage(
+        if let cgImage = LegacyWindowImageCapture.createImage(
             CGRect(x: screenPoint.x, y: screenPoint.y, width: 1, height: 1),
             .optionOnScreenBelowWindow,
             excludeWindowNumber,
             []
         ) {
             if let dataProvider = cgImage.dataProvider,
-               let data = dataProvider.data,
-               let ptr = CFDataGetBytePtr(data) {
+                let data = dataProvider.data,
+                let ptr = CFDataGetBytePtr(data)
+            {
                 let r = CGFloat(ptr[0]) / 255.0
                 let g = CGFloat(ptr[1]) / 255.0
                 let b = CGFloat(ptr[2]) / 255.0
@@ -597,7 +605,9 @@ struct ColorInfoView: View {
         case .rgb:
             return "rgb(\(r), \(g), \(b))"
         case .swiftUI:
-            return String(format: "Color(red: %.2f, green: %.2f, blue: %.2f)", rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+            return String(
+                format: "Color(red: %.2f, green: %.2f, blue: %.2f)", rgb.redComponent,
+                rgb.greenComponent, rgb.blueComponent)
         default:
             return ""
         }

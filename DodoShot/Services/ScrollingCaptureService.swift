@@ -1,6 +1,8 @@
-import Foundation
 import AppKit
 import CoreGraphics
+import Foundation
+// MARK: - SwiftUI Overlay View
+import SwiftUI
 
 /// Service for capturing scrolling content by stitching multiple screenshots
 class ScrollingCaptureService: ObservableObject {
@@ -27,7 +29,10 @@ class ScrollingCaptureService: ObservableObject {
     // MARK: - Public Methods
 
     /// Start scrolling capture for a specific window
-    func startScrollingCapture(for window: WindowInfo, direction: ScrollDirection = .down, completion: @escaping (NSImage?) -> Void) {
+    func startScrollingCapture(
+        for window: WindowInfo, direction: ScrollDirection = .down,
+        completion: @escaping (NSImage?) -> Void
+    ) {
         guard !isCapturing else { return }
 
         self.isCapturing = true
@@ -91,9 +96,11 @@ class ScrollingCaptureService: ObservableObject {
         let windowFrame = window.frame
 
         // Get screen for proper coordinate conversion
-        guard let screen = NSScreen.screens.first(where: { screen in
-            screen.frame.intersects(windowFrame)
-        }) ?? NSScreen.main else {
+        guard
+            let screen = NSScreen.screens.first(where: { screen in
+                screen.frame.intersects(windowFrame)
+            }) ?? NSScreen.main
+        else {
             cancelCapture()
             return
         }
@@ -146,20 +153,24 @@ class ScrollingCaptureService: ObservableObject {
     }
 
     private func captureWindowFrame(_ window: WindowInfo) -> NSImage? {
-        guard let cgImage = CGWindowListCreateImage(
-            window.frame,
-            .optionIncludingWindow,
-            window.windowID,
-            [.bestResolution, .boundsIgnoreFraming]
-        ) else {
+        guard
+            let cgImage = LegacyWindowImageCapture.createImage(
+                window.frame,
+                .optionIncludingWindow,
+                window.windowID,
+                [.bestResolution, .boundsIgnoreFraming]
+            )
+        else {
             print("Failed to capture window frame")
             return nil
         }
 
-        return NSImage(cgImage: cgImage, size: NSSize(
-            width: window.frame.width,
-            height: window.frame.height
-        ))
+        return NSImage(
+            cgImage: cgImage,
+            size: NSSize(
+                width: window.frame.width,
+                height: window.frame.height
+            ))
     }
 
     /// Stitch multiple images together vertically
@@ -179,7 +190,9 @@ class ScrollingCaptureService: ObservableObject {
                 stitchedImages[stitchedImages.count - 1] = stitched
             } else {
                 // If no overlap found, just append vertically
-                if let combined = combineVertically(stitchedImages.last!, currentImage, direction: direction) {
+                if let combined = combineVertically(
+                    stitchedImages.last!, currentImage, direction: direction)
+                {
                     stitchedImages[stitchedImages.count - 1] = combined
                 }
             }
@@ -189,9 +202,12 @@ class ScrollingCaptureService: ObservableObject {
     }
 
     /// Stitch two images by finding overlapping region
-    private func stitchTwoImages(_ top: NSImage, _ bottom: NSImage, direction: ScrollDirection) -> NSImage? {
+    private func stitchTwoImages(_ top: NSImage, _ bottom: NSImage, direction: ScrollDirection)
+        -> NSImage?
+    {
         guard let topCG = top.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let bottomCG = bottom.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            let bottomCG = bottom.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
             return nil
         }
 
@@ -208,12 +224,19 @@ class ScrollingCaptureService: ObservableObject {
 
             if direction == .down {
                 // Draw top image at top
-                top.draw(in: NSRect(x: 0, y: totalHeight - top.size.height, width: top.size.width, height: top.size.height))
+                top.draw(
+                    in: NSRect(
+                        x: 0, y: totalHeight - top.size.height, width: top.size.width,
+                        height: top.size.height))
                 // Draw bottom image below, accounting for overlap
-                bottom.draw(in: NSRect(x: 0, y: 0, width: bottom.size.width, height: bottom.size.height))
+                bottom.draw(
+                    in: NSRect(x: 0, y: 0, width: bottom.size.width, height: bottom.size.height))
             } else {
                 // For upward scrolling, reverse order
-                bottom.draw(in: NSRect(x: 0, y: totalHeight - bottom.size.height, width: bottom.size.width, height: bottom.size.height))
+                bottom.draw(
+                    in: NSRect(
+                        x: 0, y: totalHeight - bottom.size.height, width: bottom.size.width,
+                        height: bottom.size.height))
                 top.draw(in: NSRect(x: 0, y: 0, width: top.size.width, height: top.size.height))
             }
 
@@ -227,10 +250,11 @@ class ScrollingCaptureService: ObservableObject {
     /// Find vertical overlap between two images
     private func findOverlap(topImage: CGImage, bottomImage: CGImage) -> Int {
         let maxOverlap = min(topImage.height, bottomImage.height) / 2
-        let stripHeight = 20 // Compare 20-pixel strips
+        let stripHeight = 20  // Compare 20-pixel strips
 
         guard let topData = topImage.dataProvider?.data,
-              let bottomData = bottomImage.dataProvider?.data else {
+            let bottomData = bottomImage.dataProvider?.data
+        else {
             return 0
         }
 
@@ -249,7 +273,10 @@ class ScrollingCaptureService: ObservableObject {
                 let topRow = topImage.height - overlap + (sample * stripHeight / samplesNeeded)
                 let bottomRow = sample * stripHeight / samplesNeeded
 
-                if compareRows(topPtr, bottomPtr, topRow: topRow, bottomRow: bottomRow, bytesPerRow: bytesPerRow, width: width) {
+                if compareRows(
+                    topPtr, bottomPtr, topRow: topRow, bottomRow: bottomRow,
+                    bytesPerRow: bytesPerRow, width: width)
+                {
                     matches += 1
                 }
             }
@@ -263,18 +290,21 @@ class ScrollingCaptureService: ObservableObject {
     }
 
     /// Compare two rows of pixels
-    private func compareRows(_ topPtr: UnsafePointer<UInt8>?, _ bottomPtr: UnsafePointer<UInt8>?, topRow: Int, bottomRow: Int, bytesPerRow: Int, width: Int) -> Bool {
+    private func compareRows(
+        _ topPtr: UnsafePointer<UInt8>?, _ bottomPtr: UnsafePointer<UInt8>?, topRow: Int,
+        bottomRow: Int, bytesPerRow: Int, width: Int
+    ) -> Bool {
         guard let topPtr = topPtr, let bottomPtr = bottomPtr else { return false }
 
         let topOffset = topRow * bytesPerRow
         let bottomOffset = bottomRow * bytesPerRow
 
         var differences = 0
-        let tolerance = 10 // Allow some color difference
-        let sampleInterval = max(1, width / 100) // Sample 100 pixels across width
+        let tolerance = 10  // Allow some color difference
+        let sampleInterval = max(1, width / 100)  // Sample 100 pixels across width
 
         for x in stride(from: 0, to: width * 4, by: sampleInterval * 4) {
-            for channel in 0..<3 { // RGB
+            for channel in 0..<3 {  // RGB
                 let topValue = Int(topPtr[topOffset + x + channel])
                 let bottomValue = Int(bottomPtr[bottomOffset + x + channel])
                 if abs(topValue - bottomValue) > tolerance {
@@ -287,7 +317,9 @@ class ScrollingCaptureService: ObservableObject {
     }
 
     /// Combine two images vertically without overlap detection
-    private func combineVertically(_ top: NSImage, _ bottom: NSImage, direction: ScrollDirection) -> NSImage? {
+    private func combineVertically(_ top: NSImage, _ bottom: NSImage, direction: ScrollDirection)
+        -> NSImage?
+    {
         let totalHeight = top.size.height + bottom.size.height
         let width = max(top.size.width, bottom.size.width)
 
@@ -295,10 +327,15 @@ class ScrollingCaptureService: ObservableObject {
         newImage.lockFocus()
 
         if direction == .down {
-            top.draw(in: NSRect(x: 0, y: bottom.size.height, width: top.size.width, height: top.size.height))
-            bottom.draw(in: NSRect(x: 0, y: 0, width: bottom.size.width, height: bottom.size.height))
+            top.draw(
+                in: NSRect(
+                    x: 0, y: bottom.size.height, width: top.size.width, height: top.size.height))
+            bottom.draw(
+                in: NSRect(x: 0, y: 0, width: bottom.size.width, height: bottom.size.height))
         } else {
-            bottom.draw(in: NSRect(x: 0, y: top.size.height, width: bottom.size.width, height: bottom.size.height))
+            bottom.draw(
+                in: NSRect(
+                    x: 0, y: top.size.height, width: bottom.size.width, height: bottom.size.height))
             top.draw(in: NSRect(x: 0, y: 0, width: top.size.width, height: top.size.height))
         }
 
@@ -306,9 +343,6 @@ class ScrollingCaptureService: ObservableObject {
         return newImage
     }
 }
-
-// MARK: - SwiftUI Overlay View
-import SwiftUI
 
 struct ScrollingCaptureOverlayView: View {
     @ObservedObject var service: ScrollingCaptureService
@@ -412,9 +446,9 @@ class ScrollingCaptureWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { // ESC key
+        if event.keyCode == 53 {  // ESC key
             onEscape?()
-        } else if event.keyCode == 36 { // Enter key
+        } else if event.keyCode == 36 {  // Enter key
             onEnter?()
         } else {
             super.keyDown(with: event)
@@ -427,11 +461,11 @@ class ScrollingCaptureWindow: NSWindow {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 53 { // ESC key
+        if event.keyCode == 53 {  // ESC key
             onEscape?()
             return true
         }
-        if event.keyCode == 36 { // Enter key
+        if event.keyCode == 36 {  // Enter key
             onEnter?()
             return true
         }

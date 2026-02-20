@@ -25,8 +25,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         captureService = ScreenCaptureService.shared
         hotkeyManager = HotkeyManager.shared
 
-        // Set activation policy to regular so app appears in Cmd-Tab
-        NSApp.setActivationPolicy(.regular)
+        let showInDock = UserDefaults.standard.bool(forKey: "showInDock")
+
+        if showInDock {
+            // Set activation policy to regular so app appears in Cmd-Tab and Dock
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            NSApp.setActivationPolicy(.accessory)
+        }
 
         // Setup menu bar
         setupMenuBar()
@@ -60,8 +66,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // Register hotkeys once accessibility is granted (use direct check for reliability)
             if AXIsProcessTrusted() {
                 self?.hotkeyManager.registerHotkeys()
-                // Stop checking once all permissions are granted
-                if CGPreflightScreenCaptureAccess() {
+                // Stop checking once all permissions are granted.
+                // Use isScreenRecordingGranted (set via actual capture test) instead of
+                // CGPreflightScreenCaptureAccess() which is unreliable and would cause the
+                // timer to keep running, triggering a real screen capture every 2 seconds.
+                if permissionManager.isScreenRecordingGranted {
                     self?.permissionCheckTimer?.invalidate()
                     self?.permissionCheckTimer = nil
                 }

@@ -1,6 +1,38 @@
-import Foundation
 import AppKit
 import Combine
+import Foundation
+// MARK: - NSHostingView Helper
+import SwiftUI
+
+// Centralized compatibility wrapper to avoid direct deprecated symbol usage in Swift call sites.
+@_silgen_name("CGWindowListCreateImage")
+private func _legacyCGWindowListCreateImage(
+    _ screenBounds: CGRect,
+    _ listOption: UInt32,
+    _ windowID: UInt32,
+    _ imageOption: UInt32
+) -> Unmanaged<CGImage>?
+
+enum LegacyWindowImageCapture {
+    static func createImage(
+        _ screenBounds: CGRect,
+        _ listOption: CGWindowListOption,
+        _ windowID: CGWindowID,
+        _ imageOption: CGWindowImageOption
+    ) -> CGImage? {
+        guard
+            let unmanagedImage = _legacyCGWindowListCreateImage(
+                screenBounds,
+                listOption.rawValue,
+                windowID,
+                imageOption.rawValue
+            )
+        else {
+            return nil
+        }
+        return unmanagedImage.takeRetainedValue()
+    }
+}
 
 @MainActor
 class ScreenCaptureService: ObservableObject {
@@ -179,12 +211,14 @@ class ScreenCaptureService: ObservableObject {
                 height: rect.height
             )
 
-            guard let cgImage = CGWindowListCreateImage(
-                screenRect,
-                .optionOnScreenBelowWindow,
-                kCGNullWindowID,
-                [.bestResolution]
-            ) else {
+            guard
+                let cgImage = LegacyWindowImageCapture.createImage(
+                    screenRect,
+                    .optionOnScreenOnly,
+                    kCGNullWindowID,
+                    [.bestResolution]
+                )
+            else {
                 self.isCapturing = false
                 self.closeCaptureWindows()
                 return
@@ -255,7 +289,8 @@ class ScreenCaptureService: ObservableObject {
         let saveDirectory = saveURL.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: saveDirectory.path) {
             do {
-                try FileManager.default.createDirectory(at: saveDirectory, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(
+                    at: saveDirectory, withIntermediateDirectories: true)
             } catch {
                 print("Failed to create screenshots directory: \(error)")
             }
@@ -333,8 +368,9 @@ class ScreenCaptureService: ObservableObject {
 
             // Log the input rect and screen info for debugging
             let scaleFactor = screen.backingScaleFactor
-            NSLog("[ScreenCaptureService] captureArea - input rect: %@, screen: %@, scaleFactor: %.1f",
-                  NSStringFromRect(rect), NSStringFromRect(screen.frame), scaleFactor)
+            NSLog(
+                "[ScreenCaptureService] captureArea - input rect: %@, screen: %@, scaleFactor: %.1f",
+                NSStringFromRect(rect), NSStringFromRect(screen.frame), scaleFactor)
 
             // Round the rect to integer values to avoid fractional pixel issues
             let roundedRect = CGRect(
@@ -362,23 +398,28 @@ class ScreenCaptureService: ObservableObject {
                 height: roundedRect.height
             )
 
-            NSLog("[ScreenCaptureService] captureArea - screenRect for capture: %@", NSStringFromRect(screenRect))
+            NSLog(
+                "[ScreenCaptureService] captureArea - screenRect for capture: %@",
+                NSStringFromRect(screenRect))
 
             // Use CGWindowListCreateImage for capture
-            guard let cgImage = CGWindowListCreateImage(
-                screenRect,
-                .optionOnScreenBelowWindow,
-                kCGNullWindowID,
-                [.bestResolution]
-            ) else {
+            guard
+                let cgImage = LegacyWindowImageCapture.createImage(
+                    screenRect,
+                    .optionOnScreenOnly,
+                    kCGNullWindowID,
+                    [.bestResolution]
+                )
+            else {
                 NSLog("[ScreenCaptureService] captureArea - CGWindowListCreateImage failed")
                 self.isCapturing = false
                 self.closeCaptureWindows()
                 return
             }
 
-            NSLog("[ScreenCaptureService] captureArea - cgImage size: %d x %d, expected points: %.0f x %.0f",
-                  cgImage.width, cgImage.height, roundedRect.width, roundedRect.height)
+            NSLog(
+                "[ScreenCaptureService] captureArea - cgImage size: %d x %d, expected points: %.0f x %.0f",
+                cgImage.width, cgImage.height, roundedRect.width, roundedRect.height)
 
             // Create NSImage with the rounded rect size (in points)
             // The cgImage contains high-res pixels, NSImage size is in points
@@ -433,12 +474,14 @@ class ScreenCaptureService: ObservableObject {
     private func captureWindow(_ windowInfo: WindowInfo) {
         closeCaptureWindows()
 
-        guard let cgImage = CGWindowListCreateImage(
-            windowInfo.frame,
-            .optionIncludingWindow,
-            windowInfo.windowID,
-            [.bestResolution, .boundsIgnoreFraming]
-        ) else {
+        guard
+            let cgImage = LegacyWindowImageCapture.createImage(
+                windowInfo.frame,
+                .optionIncludingWindow,
+                windowInfo.windowID,
+                [.bestResolution, .boundsIgnoreFraming]
+            )
+        else {
             isCapturing = false
             return
         }
@@ -479,7 +522,7 @@ class ScreenCaptureService: ObservableObject {
                 return
             }
 
-            self.completeCapture(image: image, type: .fullscreen) // Using fullscreen type for scrolling
+            self.completeCapture(image: image, type: .fullscreen)  // Using fullscreen type for scrolling
         }
     }
 
@@ -493,12 +536,14 @@ class ScreenCaptureService: ObservableObject {
 
         // Small delay to ensure menu bar closes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let cgImage = CGWindowListCreateImage(
-                screen.frame,
-                .optionOnScreenOnly,
-                kCGNullWindowID,
-                [.bestResolution]
-            ) else {
+            guard
+                let cgImage = LegacyWindowImageCapture.createImage(
+                    screen.frame,
+                    .optionOnScreenOnly,
+                    kCGNullWindowID,
+                    [.bestResolution]
+                )
+            else {
                 self?.isCapturing = false
                 return
             }
@@ -517,15 +562,18 @@ class ScreenCaptureService: ObservableObject {
         // Convert NSImage to PNG Data ONCE
         // This creates a completely independent byte buffer with no references to the original image
         guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            let bitmap = NSBitmapImageRep(data: tiffData),
+            let pngData = bitmap.representation(using: .png, properties: [:])
+        else {
             NSLog("[ScreenCaptureService] Failed to convert image to PNG data")
             isCapturing = false
             return
         }
 
         let imageSize = image.size
-        NSLog("[ScreenCaptureService] PNG data created, size: %d bytes, image size: %@", pngData.count, NSStringFromSize(imageSize))
+        NSLog(
+            "[ScreenCaptureService] PNG data created, size: %d bytes, image size: %@",
+            pngData.count, NSStringFromSize(imageSize))
 
         // Create screenshot directly from PNG data - no NSImage intermediaries
         // Use a single shared ID so history and editor refer to the same logical screenshot
@@ -577,7 +625,9 @@ class ScreenCaptureService: ObservableObject {
         capturedAt: Date,
         captureType: CaptureType
     ) {
-        NSLog("[ScreenCaptureService] openEditorDirectly called with screenshot id: %@", screenshotId.uuidString)
+        NSLog(
+            "[ScreenCaptureService] openEditorDirectly called with screenshot id: %@",
+            screenshotId.uuidString)
 
         // Create a fresh Screenshot from the PNG data for the editor
         // This is completely independent - just bytes in memory
@@ -590,7 +640,8 @@ class ScreenCaptureService: ObservableObject {
         )
 
         NSLog("[ScreenCaptureService] About to call showEditor")
-        AnnotationEditorWindowController.shared.showEditor(for: editorScreenshot) { updatedScreenshot in
+        AnnotationEditorWindowController.shared.showEditor(for: editorScreenshot) {
+            updatedScreenshot in
             NSLog("[ScreenCaptureService] Save callback invoked")
             Task { @MainActor in
                 ScreenCaptureService.shared.saveToFile(updatedScreenshot)
@@ -671,9 +722,6 @@ class ScreenCaptureService: ObservableObject {
         return URL(fileURLWithPath: saveLocation).appendingPathComponent(filename)
     }
 }
-
-// MARK: - NSHostingView Helper
-import SwiftUI
 
 // Removed problematic NSHostingView extension that caused infinite recursion
 
@@ -866,7 +914,7 @@ class CaptureWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { // ESC key
+        if event.keyCode == 53 {  // ESC key
             onEscape?()
             // Don't call super - consume the event completely
         } else {
@@ -880,9 +928,9 @@ class CaptureWindow: NSWindow {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 53 { // ESC key
+        if event.keyCode == 53 {  // ESC key
             onEscape?()
-            return true // Event handled, don't propagate
+            return true  // Event handled, don't propagate
         }
         return super.performKeyEquivalent(with: event)
     }
