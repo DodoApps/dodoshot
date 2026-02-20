@@ -37,8 +37,22 @@ final class PermissionManager: ObservableObject {
 
     /// Check screen recording permission
     func checkScreenRecordingPermission() {
-        // CGPreflightScreenCaptureAccess is UNRELIABLE - it often returns true even without permission
-        // The ONLY reliable check is to actually capture and verify we get real content (not gray)
+        // If permission is already confirmed, use the lightweight preflight check.
+        // CGPreflightScreenCaptureAccess() does NOT trigger the macOS "is capturing your screen"
+        // indicator, whereas an actual CGWindowListCreateImage call does.
+        if isScreenRecordingGranted {
+            if !CGPreflightScreenCaptureAccess() {
+                NSLog("[PermissionManager] Screen recording revoked (preflight check)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.isScreenRecordingGranted = false
+                }
+            }
+            return
+        }
+
+        // Permission not yet confirmed — do the actual capture test.
+        // CGPreflightScreenCaptureAccess is UNRELIABLE for initial detection (often returns true
+        // even without permission), so we verify by capturing and checking for real content.
         let hasAccess = canActuallyCaptureScreen()
 
         NSLog(
