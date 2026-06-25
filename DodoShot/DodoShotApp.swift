@@ -265,11 +265,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.center()
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: SettingsView())
+            // Ensure the window joins the active Space and floats above other
+            // apps. As an accessory (LSUIElement) app we can't reliably pull a
+            // plain window to the front, so it would otherwise open hidden
+            // behind everything — appearing as "nothing happens" on click.
+            window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+            window.center()
             settingsWindow = window
         }
 
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        // An accessory app cannot reliably foreground a window with
+        // makeKeyAndOrderFront alone. Briefly become a regular app so we own
+        // the foreground, bring the window forward, then restore the policy.
+        let restorePolicy = NSApp.activationPolicy()
+        if restorePolicy != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+
         NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow?.orderFrontRegardless()
+
+        // Restore the original activation policy once the window is up so the
+        // app stays a menu-bar item (no Dock icon) when not configured to show one.
+        if restorePolicy != .regular {
+            DispatchQueue.main.async { [weak self] in
+                guard self?.settingsWindow != nil else { return }
+                NSApp.setActivationPolicy(restorePolicy)
+            }
+        }
     }
 
     @objc private func quitApp() {
