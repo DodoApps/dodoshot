@@ -160,6 +160,14 @@ struct MenuBarView: View {
             ) {
                 startOCRCapture()
             }
+
+            MenuToolButton(
+                icon: "arrow.down.doc",
+                label: L10n.Menu.scrolling,
+                color: .indigo
+            ) {
+                startScrollingCapture()
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -265,6 +273,13 @@ struct MenuBarView: View {
         NSApp.sendAction(#selector(AppDelegate.closePopover), to: nil, from: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             ScreenCaptureService.shared.startOCRCapture()
+        }
+    }
+
+    private func startScrollingCapture() {
+        NSApp.sendAction(#selector(AppDelegate.closePopover), to: nil, from: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            ScreenCaptureService.shared.startScrollingCapture()
         }
     }
 
